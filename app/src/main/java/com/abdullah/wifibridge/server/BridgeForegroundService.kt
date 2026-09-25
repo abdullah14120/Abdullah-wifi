@@ -25,37 +25,50 @@ class BridgeForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // استقبال المتغيرات الممررة من واجهة المستخدم
         val subnetX = intent?.getIntExtra("SUBNET_X", 50) ?: 50
         val gatewayY = intent?.getIntExtra("GATEWAY_Y", 1) ?: 1
+        val ssidName = intent?.getStringExtra("SSID_NAME") ?: "Abdullah_Bridge_Root"
+        val ssidPassword = intent?.getStringExtra("SSID_PASSWORD") ?: "12345678"
 
-        val notification = createNotification("البث يعمل على 192.168.$subnetX.$gatewayY عبر الروت...")
+        // بدء الخدمة الأمامية مع رسالة واضحة تحتوي على اسم الشبكة والنطاق
+        val notification = createNotification("جاري بث ($ssidName) على 192.168.$subnetX.$gatewayY عبر الروت...")
         startForeground(NOTIFICATION_ID, notification)
 
         Thread {
-            // 1. تفعيل IP Forwarding للنواة
-            RootNetworkMasterEngine.enableIpForwarding()
+            try {
+                // 1. تفعيل IP Forwarding في نواة النظام (Kernel)
+                RootNetworkMasterEngine.enableIpForwarding()
 
-            // 2. تشغيل خدمة نقطة الاتصال في النظام إجبارياً (SoftAP)
-            RootNetworkMasterEngine.startSystemSoftAp()
+                // 2. ضبط إعدادات نقطة الاتصال (SoftAP) بالاسم وكلمة المرور وتفعيلها إجبارياً
+                RootNetworkMasterEngine.configureAndStartSoftAp(ssidName, ssidPassword)
 
-            // انتظار ثوانٍ معدودة حتى تقوم الشريحة بتهيئة الواجهة (ap0 أو wlan0)
-            Thread.sleep(2000)
+                // انتظار ثوانٍ معدودة حتى تقوم تعريفات الشريحة بتهيئة واستقرار واجهة البث (ap0 أو wlan0)
+                Thread.sleep(2500)
 
-            // 3. جلب واجهة البث والواجهة النشطة للإنترنت (WAN)
-            val hotspotInterface = NetworkInterfaceScanner.getHotspotInterface() ?: "ap0"
-            val wan = NetworkInterfaceScanner.getActiveWanInterface() ?: "rmnet_data0"
+                // 3. جلب واجهة البث والواجهة النشطة للإنترنت (WAN) ديناميكياً
+                val hotspotInterface = NetworkInterfaceScanner.getHotspotInterface() ?: "ap0"
+                val wan = NetworkInterfaceScanner.getActiveWanInterface() ?: "rmnet_data0"
 
-            // 4. تطبيق الـ Subnet المخصص (الآي بي وجهاز التوجيه) وقواعد الـ NAT
-            RootNetworkMasterEngine.setupCustomSubnetAndNat(subnetX, gatewayY, wan, hotspotInterface)
+                // 4. تطبيق الـ Subnet المخصص (الآي بي وجهاز التوجيه) وقواعد الجدار الناري NAT
+                RootNetworkMasterEngine.setupCustomSubnetAndNat(subnetX, gatewayY, wan, hotspotInterface)
 
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }.start()
 
         return START_STICKY
     }
 
     override fun onDestroy() {
+        // تنظيف وإلغاء جميع قواعد الـ iptables وإيقاف توجيه الشبكة عند إغلاق الخدمة
         Thread {
-            RootNetworkMasterEngine.flushAllRules()
+            try {
+                RootNetworkMasterEngine.flushAllRules()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }.start()
         super.onDestroy()
     }
@@ -68,7 +81,9 @@ class BridgeForegroundService : Service() {
                 CHANNEL_ID,
                 "WiFi Bridge Root Service Channel",
                 NotificationManager.IMPORTANCE_LOW
-            )
+            ).apply {
+                description = "قناة مخصصة لخدمة جسر شبكة الواي فاي ذات صلاحيات الروت"
+            }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(serviceChannel)
         }
@@ -80,6 +95,7 @@ class BridgeForegroundService : Service() {
             .setContentText(message)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
             .build()
     }
 }
