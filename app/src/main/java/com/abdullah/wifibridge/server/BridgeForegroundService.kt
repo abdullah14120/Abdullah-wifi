@@ -43,6 +43,10 @@ class BridgeForegroundService : Service() {
         val subnetX = intent?.getIntExtra("SUBNET_X", 50) ?: 50
         val gatewayY = intent?.getIntExtra("GATEWAY_Y", 1) ?: 1
         val customDns = intent?.getStringExtra("DNS_SERVER") ?: "1.1.1.1"
+        
+        // 🟢 التقاط اسم الشبكة وكلمة المرور المدخلة يدوياً من MainActivity (إن وجدت)
+        val customSsid = intent?.getStringExtra("SSID_NAME")
+        val customPassword = intent?.getStringExtra("SSID_PASSWORD")
 
         // بدء الخدمة في الواجهة الأمامية لمنع نظام أندرويد من قتلها
         val notification = buildNotification("جاري تهيئة بيئة الجسر وتفعيل Wi-Fi Direct...")
@@ -68,23 +72,24 @@ class BridgeForegroundService : Service() {
                 // 2. تنظيف البيئة مسبقاً لإزالة أي تعارض سابق في قواعد الـ iptables
                 RootNetworkMasterEngine.performDeepEnvironmentSanitization(hotspotInterface)
 
-                // 3. إنشاء شبكة Wi-Fi Direct (P2P Group Owner) المماثلة للتطبيق الناجح
-                WifiDirectBridgeEngine.createWifiP2pGroup(applicationContext) { success, ssid, password ->
+                // 3. إنشاء شبكة Wi-Fi Direct (P2P Group Owner)
+                WifiDirectBridgeEngine.createWifiP2pGroup(applicationContext) { success, generatedSsid, generatedPassword ->
                     if (success) {
-                        Log.i(TAG, "Wi-Fi Direct Group Active! SSID: $ssid | Password: $password")
-                        
-                        val safeSsid = ssid ?: "Unknown_SSID"
-                        val safePassword = password ?: ""
+                        // دمج القيم: اعتماد إدخال المستخدم إذا وجد، وإلا فالقيم المولدّة تلقائياً
+                        val finalSsid = if (!customSsid.isNullOrEmpty()) customSsid else (generatedSsid ?: "Android_Bridge")
+                        val finalPass = if (!customPassword.isNullOrEmpty()) customPassword else (generatedPassword ?: "")
 
+                        Log.i(TAG, "Wi-Fi Direct Group Active! SSID: $finalSsid | Password: $finalPass")
+                        
                         // تحديث الإشعار باسم الشبكة المنشأة
-                        updateNotification("البث نشط: $safeSsid | كلمة المرور: $safePassword")
+                        updateNotification("البث نشط: $finalSsid | كلمة المرور: $finalPass")
 
                         // 🚀 إرسال البيانات فوراً للواجهة (MainActivity) لعرض الباركود والاتصال
                         sendBridgeStatusBroadcast(
                             isActive = true,
                             message = "تم تشغيل الجسر والبث بنجاح ✔️",
-                            ssid = safeSsid,
-                            password = safePassword
+                            ssid = finalSsid,
+                            password = finalPass
                         )
 
                         // 4. تطبيق تزييف الـ MAC Address لحماية الخصوصية على الواجهة النشطة
