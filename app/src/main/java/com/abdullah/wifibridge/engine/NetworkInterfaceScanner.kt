@@ -4,57 +4,78 @@ import android.util.Log
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
+/**
+ * NetworkInterfaceScanner - كاشف واجهات الشبكة الذكي والمستقل.
+ * يقوم بفحص بيئة لينكس الداخلية عبر الروت لتحديد بطاقة الإنترنت الخارجي (WAN) وبطاقة البث (LAN/Hotspot) ديناميكياً.
+ */
 object NetworkInterfaceScanner {
+
     private const val TAG = "InterfaceScanner"
 
     /**
-     * استشعار وفحص البطاقة المسؤولة عن الخروج للإنترنت (مثل rmnet_data0 أو wlan0)
+     * استشعار بطاقة الإنترنت الخارجي النشطة حالياً (Cellular Data أو Wi-Fi الأساسي)
      */
-    fun findActiveWanInterface(): String? {
+    fun getActiveWanInterface(): String? {
+        var wanInterface: String? = null
         try {
             val process = Runtime.getRuntime().exec("su -c ip route show")
             val reader = BufferedReader(InputStreamReader(process.inputStream))
             var line: String?
+            
             while (reader.readLine().also { line = it } != null) {
-                // البحث عن السطر الذي يحتوي على كلمة "default via" أو "dev"
+                // البحث عن السطر الذي يحتوي على مسار الخروج الافتراضي (default via ... dev ...)
                 if (line!!.contains("default")) {
-                    val parts = line!!.split(" ".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
-                    for (i in parts.indices) {
-                        if (parts[i] == "dev" && i + 1 < parts.size) {
-                            Log.d(TAG, "Found active WAN interface: ${parts[i + 1]}")
-                            return parts[i + 1]
+                    val tokens = line!!.split("\\s+".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
+                    for (i in tokens.indices) {
+                        if (tokens[i] == "dev" && i + 1 < tokens.size) {
+                            wanInterface = tokens[i + 1]
+                            break
                         }
                     }
                 }
             }
+            reader.close()
+            process.waitFor()
         } catch (e: Exception) {
-            Log.e(TAG, "Error scanning WAN interface: ${e.message}")
+            Log.e(TAG, "خطأ أثناء استشعار واجهة WAN: ${e.message}")
         }
-        // قيمة افتراضية احتياطية لمعالجات كوالكوم في حال لم ينجح الاستشعار التلقائي
-        return "rmnet_data0"
+
+        // إذا لم يتم العثور عليها تلقائياً، نعود للقيم الشائعة كخيار احتياطي
+        if (wanInterface.isNullOrEmpty()) {
+            wanInterface = "rmnet_data0"
+            Log.w(TAG, "تعذر تحديد WAN بدقة، استخدام القيمة الاحتياطية: $wanInterface")
+        } else {
+            Log.i(TAG, "تم بنجاح رصد واجهة الإنترنت الخارجي: $wanInterface")
+        }
+        
+        return wanInterface
     }
 
     /**
-     * تحديد بطاقة نقطة البث الداخلية (Hotspot Interface) في أندرويد 8
+     * تحديد بطاقة نقطة البث الداخلية (Hotspot Interface) حسب إصدار أندرويد
      */
-    fun findHotspotInterface(): String {
-        // عادة في أندرويد 8-9 تكون واجهة البث ap0 أو wlan1
-        val possibleInterfaces = listOf("ap0", "swlan0", "wlan1", "softap0")
+    fun getHotspotInterface(): String {
+        val possibleHotspots = arrayOf("ap0", "swlan0", "wlan1", "softap0", "ap-wlan0")
         try {
             val process = Runtime.getRuntime().exec("su -c ip link show")
             val reader = BufferedReader(InputStreamReader(process.inputStream))
             var line: String?
+            
             while (reader.readLine().also { line = it } != null) {
-                for (iface in possibleInterfaces) {
+                for (iface in possibleHotspots) {
                     if (line!!.contains(iface)) {
-                        Log.d(TAG, "Found active Hotspot interface: $iface")
+                        Log.i(TAG, "تم رصد واجهة البث النشطة: $iface")
                         return iface
                     }
                 }
             }
+            reader.close()
+            process.waitFor()
         } catch (e: Exception) {
-            Log.e(TAG, "Error scanning Hotspot interface: ${e.message}")
+            Log.e(TAG, "خطأ أثناء استشعار واجهة Hotspot: ${e.message}")
         }
-        return "ap0" // القيمة الأكثر شيوعاً
+        
+        // القيمة الافتراضية الأكثر اعتماداً في أندرويد
+        return "ap0"
     }
 }
