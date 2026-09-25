@@ -12,6 +12,7 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
@@ -19,6 +20,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.abdullah.wifibridge.engine.RootNetworkMasterEngine
 import com.abdullah.wifibridge.server.BridgeForegroundService
+import com.abdullah.wifibridge.utils.QRCodeGenerator
 
 class MainActivity : AppCompatActivity() {
 
@@ -30,6 +32,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etSsidPassword: EditText
     private lateinit var spinnerDns: Spinner
     private lateinit var etCustomDns: EditText
+    
+    // عناصر عرض الباركود الجديدة
+    private lateinit var ivQrCode: ImageView
+    private lateinit var tvQrInstruction: TextView
 
     private var isBridgeActive = false
     private var selectedDnsServer = "1.1.1.1" // القيمة الافتراضية الموثوقة (Cloudflare)
@@ -47,8 +53,17 @@ class MainActivity : AppCompatActivity() {
                     isBridgeActive = true
                     btnToggleBridge.text = "إيقاف الجسر الشفاف والبث"
                     btnToggleBridge.setBackgroundColor(Color.RED)
+
+                    // التقاط اسم الشبكة وكلمة المرور الفعليين من الخدمة لعرض الـ QR
+                    val activeSsid = it.getStringExtra("ACTIVE_SSID") ?: etSsidName.text.toString().trim()
+                    val activePass = it.getStringExtra("ACTIVE_PASSWORD") ?: etSsidPassword.text.toString().trim()
+                    
+                    if (activeSsid.isNotEmpty() && activePass.isNotEmpty()) {
+                        displayWifiQrCode(activeSsid, activePass)
+                    }
                 } else {
                     statusTextView.setTextColor(Color.parseColor("#FF9800"))
+                    hideWifiQrCode()
                 }
             }
         }
@@ -67,6 +82,10 @@ class MainActivity : AppCompatActivity() {
         etSsidPassword = findViewById(R.id.etSsidPassword)
         spinnerDns = findViewById(R.id.spinnerDns)
         etCustomDns = findViewById(R.id.etCustomDns)
+        
+        // ربط عناصر الباركود (تأكد من إضافتها في ملف activity_main.xml لاحقاً)
+        ivQrCode = findViewById(R.id.ivQrCode)
+        tvQrInstruction = findViewById(R.id.tvQrInstruction)
 
         // إعداد خيارات قائمة الـ DNS الموثوقة
         setupDnsSpinner()
@@ -96,6 +115,32 @@ class MainActivity : AppCompatActivity() {
         super.onPause()
         // إلغاء التسجيل لتجنب تسريب الذاكرة (Memory Leaks)
         LocalBroadcastManager.getInstance(this).unregisterReceiver(bridgeStatusReceiver)
+    }
+
+    /**
+     * توليد وعرض باركود الواي فاي لتسهيل اتصال الأجهزة العميلية
+     */
+    private fun displayWifiQrCode(ssid: String, pass: String) {
+        try {
+            val qrBitmap = QRCodeGenerator.generateWifiQrCode(ssid, pass, "WPA", false, 512)
+            if (qrBitmap != null) {
+                ivQrCode.setImageBitmap(qrBitmap)
+                ivQrCode.visibility = View.VISIBLE
+                tvQrInstruction.text = "مسح الكود للاتصال السريع بشبكة: $ssid"
+                tvQrInstruction.visibility = View.VISIBLE
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * إخفاء باركود الواي فاي عند إيقاف الخدمة
+     */
+    private fun hideWifiQrCode() {
+        ivQrCode.visibility = View.GONE
+        tvQrInstruction.visibility = View.GONE
+        ivQrCode.setImageBitmap(null)
     }
 
     /**
@@ -129,7 +174,6 @@ class MainActivity : AppCompatActivity() {
                         etCustomDns.visibility = View.GONE
                     }
                     3 -> {
-                        // إظهار حقل الإدخال اليدوي إذا اختار المستخدم تخصيص DNS
                         etCustomDns.visibility = View.VISIBLE
                         val customVal = etCustomDns.text.toString().trim()
                         if (customVal.isNotEmpty()) {
@@ -175,7 +219,6 @@ class MainActivity : AppCompatActivity() {
         val ssidInput = etSsidName.text.toString().trim()
         val passwordInput = etSsidPassword.text.toString().trim()
 
-        // إذا كان الخيار المختار هو التخصيص اليدوي، نأخذ القيمة من الحقل المخصص
         if (spinnerDns.selectedItemPosition == 3) {
             val customDnsInput = etCustomDns.text.toString().trim()
             if (customDnsInput.isNotEmpty()) {
@@ -186,7 +229,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // التحقق من صحة المدخلات الأساسية
         if (ssidInput.isEmpty()) {
             Toast.makeText(this, "يرجى إدخال اسم الشبكة (SSID)", Toast.LENGTH_SHORT).show()
             return
@@ -200,7 +242,6 @@ class MainActivity : AppCompatActivity() {
         val subnetX = if (subnetStr.isNotEmpty()) subnetStr.toInt() else 50
         val gatewayY = if (gatewayStr.isNotEmpty()) gatewayStr.toInt() else 1
 
-        // تجهيز الـ Intent وتمرير القيم المخصصة بما فيها الـ DNS المختار للخدمة الخلفية
         val serviceIntent = Intent(this, BridgeForegroundService::class.java).apply {
             putExtra("SUBNET_X", subnetX)
             putExtra("GATEWAY_Y", gatewayY)
@@ -218,7 +259,7 @@ class MainActivity : AppCompatActivity() {
         isBridgeActive = true
         btnToggleBridge.text = "إيقاف الجسر الشفاف والبث"
         btnToggleBridge.setBackgroundColor(Color.RED)
-        Toast.makeText(this, "جاري إعداد البث ($ssidInput)...", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "جاري إعداد البث ($ssidInput)...", Toast.LENGTH_SHORT).show()
     }
 
     /**
@@ -233,6 +274,10 @@ class MainActivity : AppCompatActivity() {
         btnToggleBridge.setBackgroundColor(Color.parseColor("#4CAF50"))
         statusTextView.text = "حالة الجسر: متوقف حالياً."
         statusTextView.setTextColor(Color.parseColor("#757575"))
+        
+        // إخفاء الـ QR عند الإيقاف
+        hideWifiQrCode()
+        
         Toast.makeText(this, "تم إيقاف البث وإعادة تعيين الشبكة بنجاح.", Toast.LENGTH_SHORT).show()
     }
 }
