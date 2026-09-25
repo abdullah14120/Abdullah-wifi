@@ -19,6 +19,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.abdullah.wifibridge.engine.RootNetworkMasterEngine
+import com.abdullah.wifibridge.engine.WifiDirectBridgeEngine
 import com.abdullah.wifibridge.server.BridgeForegroundService
 import com.abdullah.wifibridge.utils.QRCodeGenerator
 
@@ -33,7 +34,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var spinnerDns: Spinner
     private lateinit var etCustomDns: EditText
     
-    // عناصر عرض الباركود الجديدة
+    // عناصر عرض الباركود
     private lateinit var ivQrCode: ImageView
     private lateinit var tvQrInstruction: TextView
 
@@ -54,15 +55,24 @@ class MainActivity : AppCompatActivity() {
                     btnToggleBridge.text = "إيقاف الجسر الشفاف والبث"
                     btnToggleBridge.setBackgroundColor(Color.RED)
 
-                    // التقاط اسم الشبكة وكلمة المرور الفعليين من الخدمة لعرض الـ QR
+                    // التقاط اسم الشبكة وكلمة المرور الفعليين من الخدمة لعرض الـ QR وتحديث الحقول
                     val activeSsid = it.getStringExtra("ACTIVE_SSID") ?: etSsidName.text.toString().trim()
                     val activePass = it.getStringExtra("ACTIVE_PASSWORD") ?: etSsidPassword.text.toString().trim()
                     
                     if (activeSsid.isNotEmpty() && activePass.isNotEmpty()) {
+                        etSsidName.setText(activeSsid)
+                        etSsidPassword.setText(activePass)
+                        etSsidName.isEnabled = false
+                        etSsidPassword.isEnabled = false
                         displayWifiQrCode(activeSsid, activePass)
                     }
                 } else {
                     statusTextView.setTextColor(Color.parseColor("#FF9800"))
+                    isBridgeActive = false
+                    btnToggleBridge.text = "تشغيل الجسر الشفاف والبث"
+                    btnToggleBridge.setBackgroundColor(Color.parseColor("#4CAF50"))
+                    etSsidName.isEnabled = true
+                    etSsidPassword.isEnabled = true
                     hideWifiQrCode()
                 }
             }
@@ -83,7 +93,7 @@ class MainActivity : AppCompatActivity() {
         spinnerDns = findViewById(R.id.spinnerDns)
         etCustomDns = findViewById(R.id.etCustomDns)
         
-        // ربط عناصر الباركود (تأكد من إضافتها في ملف activity_main.xml لاحقاً)
+        // ربط عناصر الباركود
         ivQrCode = findViewById(R.id.ivQrCode)
         tvQrInstruction = findViewById(R.id.tvQrInstruction)
 
@@ -211,13 +221,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * بدء خدمة الجسر الشفاف وتمرير بيانات الشبكة واسم البث والـ DNS المختار
+     * بدء خدمة الجسر الشفاف عبر إنشاء شبكة Wi-Fi Direct الحقيقية وتمرير بيانات النظام
      */
     private fun startBridgeService() {
         val subnetStr = etSubnetX.text.toString().trim()
         val gatewayStr = etGatewayY.text.toString().trim()
-        val ssidInput = etSsidName.text.toString().trim()
-        val passwordInput = etSsidPassword.text.toString().trim()
 
         if (spinnerDns.selectedItemPosition == 3) {
             val customDnsInput = etCustomDns.text.toString().trim()
@@ -229,43 +237,62 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (ssidInput.isEmpty()) {
-            Toast.makeText(this, "يرجى إدخال اسم الشبكة (SSID)", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (passwordInput.length < 8) {
-            Toast.makeText(this, "كلمة المرور يجب أن تكون 8 خانات على الأقل لـ WPA2!", Toast.LENGTH_SHORT).show()
-            return
-        }
-
         val subnetX = if (subnetStr.isNotEmpty()) subnetStr.toInt() else 50
         val gatewayY = if (gatewayStr.isNotEmpty()) gatewayStr.toInt() else 1
 
-        val serviceIntent = Intent(this, BridgeForegroundService::class.java).apply {
-            putExtra("SUBNET_X", subnetX)
-            putExtra("GATEWAY_Y", gatewayY)
-            putExtra("SSID_NAME", ssidInput)
-            putExtra("SSID_PASSWORD", passwordInput)
-            putExtra("DNS_SERVER", selectedDnsServer)
+        statusTextView.text = "جاري تهيئة شبكة Wi-Fi Direct ونظام البث..."
+        btnToggleBridge.isEnabled = false
+
+        // استدعاء المحرك الموحد لضمان توليد شبكة P2P حقيقية ومتطابقة مع أندرويد
+        WifiDirectBridgeEngine.createWifiP2pGroup(this) { success, realSsid, realPassword ->
+            runOnUiThread {
+                btnToggleBridge.isEnabled = true
+                if (success && !realSsid.isNullOrEmpty() && !realPassword.isNullOrEmpty()) {
+                    
+                    // تحديث الحقول وعرض الباركود المطابق تماماً للواقع
+                    etSsidName.setText(realSsid)
+                    etSsidPassword.setText(realPassword)
+                    etSsidName.isEnabled = false
+                    etSsidPassword.isEnabled = false
+                    
+                    displayWifiQrCode(realSsid, realPassword)
+
+                    // إرسال البيانات للخدمة الخلفية لإتمام قواعد الـ iptables وجسر الشبكة
+                    val serviceIntent = Intent(this, BridgeForegroundService::class.java).apply {
+                        putExtra("SUBNET_X", subnetX)
+                        putExtra("GATEWAY_Y", gatewayY)
+                        putExtra("SSID_NAME", realSsid)
+                        putExtra("SSID_PASSWORD", realPassword)
+                        putExtra("DNS_SERVER", selectedDnsServer)
+                    }
+                    
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(serviceIntent)
+                    } else {
+                        startService(serviceIntent)
+                    }
+                    
+                    isBridgeActive = true
+                    btnToggleBridge.text = "إيقاف الجسر الشفاف والبث"
+                    btnToggleBridge.setBackgroundColor(Color.RED)
+                    Toast.makeText(this, "تم تفعيل الشبكة بنجاح: $realSsid", Toast.LENGTH_LONG).show()
+
+                } else {
+                    statusTextView.text = "فشل إنشاء مجموعة Wi-Fi Direct عبر النظام!"
+                    statusTextView.setTextColor(Color.RED)
+                    Toast.makeText(this, "حدث خطأ أثناء إنشاء شبكة P2P الحقيقية.", Toast.LENGTH_LONG).show()
+                }
+            }
         }
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
-        }
-        
-        isBridgeActive = true
-        btnToggleBridge.text = "إيقاف الجسر الشفاف والبث"
-        btnToggleBridge.setBackgroundColor(Color.RED)
-        Toast.makeText(this, "جاري إعداد البث ($ssidInput)...", Toast.LENGTH_SHORT).show()
     }
 
     /**
-     * إيقاف الخدمة وتحرير واجهات الشبكة وقواعد الحماية
+     * إيقاف الخدمة وتحرير واجهات الشبكة وقواعد الحماية وإعادة تفعيل الحقول
      */
     private fun stopBridgeService() {
+        // إيقاف محرك الـ P2P ونظافة الشبكة
+        WifiDirectBridgeEngine.removeWifiP2pGroup(this)
+
         val serviceIntent = Intent(this, BridgeForegroundService::class.java)
         stopService(serviceIntent)
         
@@ -275,7 +302,9 @@ class MainActivity : AppCompatActivity() {
         statusTextView.text = "حالة الجسر: متوقف حالياً."
         statusTextView.setTextColor(Color.parseColor("#757575"))
         
-        // إخفاء الـ QR عند الإيقاف
+        // إعادة تمكين تعديل الحقول وإخفاء الـ QR
+        etSsidName.isEnabled = true
+        etSsidPassword.isEnabled = true
         hideWifiQrCode()
         
         Toast.makeText(this, "تم إيقاف البث وإعادة تعيين الشبكة بنجاح.", Toast.LENGTH_SHORT).show()
