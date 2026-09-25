@@ -136,14 +136,14 @@ class BridgeForegroundService : Service() {
     }
 
     /**
-     * دالة استشعار ذكية تبحث في كروت الشبكة النشطة عن أي واجهة تبدأ بـ p2p أو wlan وتعود بها ديناميكياً
+     * دالة استشعار ذكية تبحث في كروت الشبكة النشطة عن أي واجهة تبدأ بـ p2p أو wlan وتعود بها ديناميكياً (تم تصحيح الحلقة)
      */
     private fun detectActualP2pInterface(): String {
         try {
             val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
-            // البحث عن الواجهة النشطة الخاصة بالـ Wi-Fi Direct
-            for ('i' in interfaces) {
-                val name = i.name
+            // البحث السليم عن الواجهة النشطة بدون أخطاء نحوية
+            for (netInterface in interfaces) {
+                val name = netInterface.name
                 if (name.startsWith("p2p") || name.startsWith("swlan") || (name.startsWith("wlan") && name != "wlan0")) {
                     Log.i(TAG, "Found matching P2P/Hotspot interface dynamically: $name")
                     return name
