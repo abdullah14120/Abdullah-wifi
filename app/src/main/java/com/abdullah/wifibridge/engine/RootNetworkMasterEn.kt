@@ -92,25 +92,36 @@ object RootNetworkMasterEngine {
     }
 
     /**
-     * ضبط إعدادات نقطة الاتصال (SoftAP) بالاسم وكلمة المرور وتفعيلها إجبارياً دفعة واحدة
+     * 🚀 ضبط وتشغيل نقطة الاتصال (SoftAP) إجبارياً وتجاوز عشوائية النظام (Hard Enforcement)
+     * لضمان تطبيق الاسم وكلمة المرور المحددة وعدم استبدالهما بقيم النظام الافتراضية.
      */
-    fun configureAndStartSoftAp(ssid: String, password: String): Boolean {
+    fun forceConfigureAndStartSoftAp(ssid: String, password: String): Boolean {
+        Log.i(TAG, "Enforcing custom SoftAP configuration: SSID=$ssid")
         val commands = listOf(
             "svc wifi disable", // تعطيل الواي فاي العادي لمنع التداخل الهاردويري
             "cmd wifi set-softap-enabled false",
-            "cmd wifi set-softap-configuration ssid \"$ssid\" passphrase \"$password\"",
+            "killall hostapd 2>/dev/null || true",
+            "killall dnsmasq 2>/dev/null || true",
+            // حقن الإعدادات الإجبارية مع تحديد حماية WPA2_PSK صراحة
+            "cmd wifi set-softap-configuration ssid \"$ssid\" passphrase \"$password\" security WPA2_PSK",
             "cmd wifi set-softap-enabled true"
         )
-        return executeRootCommandsBatch(commands)
+        val success = executeRootCommandsBatch(commands)
+        if (success) {
+            Log.i(TAG, "SoftAP enforcement commands executed successfully.")
+        } else {
+            Log.w(TAG, "Failed to execute complete SoftAP enforcement batch.")
+        }
+        return success
     }
 
     /**
-     * تعديل اسم الشبكة (SSID) وكلمة المرور (Password) عبر صلاحيات الروت فقط
+     * تعديل اسم الشبكة (SSID) وكلمة المرور (Password) عبر الروت حصرياً
      */
     fun updateSoftApConfiguration(ssid: String, password: String): Boolean {
         val commands = listOf(
             "cmd wifi set-softap-enabled false",
-            "cmd wifi set-softap-configuration ssid \"$ssid\" passphrase \"$password\"",
+            "cmd wifi set-softap-configuration ssid \"$ssid\" passphrase \"$password\" security WPA2_PSK",
             "cmd wifi set-softap-enabled true"
         )
         return executeRootCommandsBatch(commands)
@@ -132,6 +143,33 @@ object RootNetworkMasterEngine {
      */
     fun stopSystemSoftAp(): Boolean {
         return executeRootCommand("cmd wifi set-softap-enabled false")
+    }
+
+    /**
+     * 🔍 التحقق الفوري من إعدادات الـ SoftAP النشطة في النظام للتأكد من نجاح الفرض
+     */
+    fun verifyActiveSoftApConfig(): String? {
+        var process: Process? = null
+        var os: DataOutputStream? = null
+        try {
+            process = Runtime.getRuntime().exec("su")
+            os = DataOutputStream(process.outputStream)
+            os.writeBytes("cmd wifi get-softap-configuration\n")
+            os.writeBytes("exit\n")
+            os.flush()
+            
+            val output = process.inputStream.bufferedReader().use { it.readText() }
+            process.waitFor()
+            return output
+        } catch (e: Exception) {
+            Log.e(TAG, "Error verifying active softap config", e)
+            return null
+        } finally {
+            try {
+                os?.close()
+                process?.destroy()
+            } catch (_: IOException) {}
+        }
     }
 
     /**
@@ -172,7 +210,7 @@ object RootNetworkMasterEngine {
      */
     fun generateDynamicSubnet(): Pair<Int, Int> {
         val random = Random()
-        // اختيار رقم عشوائي للنطاق الثالث بين 10 و 200 لتجنب التصادم مع شبكات الراوترات المنزلية الشائعة (مثل 0 أو 1 أو 8)
+        // اختيار رقم عشوائي للنطاق الثالث بين 10 و 200 لتجنب التصادم مع شبكات الراوترات المنزلية الشائعة
         val subnetX = random.nextInt(191) + 10 
         val gatewayY = 1 // عادة يكون الجيتواي هو .1
         return Pair(subnetX, gatewayY)
