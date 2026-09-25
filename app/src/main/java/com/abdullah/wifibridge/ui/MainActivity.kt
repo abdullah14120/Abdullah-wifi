@@ -16,6 +16,7 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.abdullah.wifibridge.databinding.ActivityMainBinding
 import com.abdullah.wifibridge.server.HotspotService
@@ -26,18 +27,28 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var isServerRunning = false
 
-    // 1. مسجل الأذونات الحديث (Multiple Permissions Launcher)
+    // 1. مسجل الأذونات الذكي (Multiple Permissions Launcher)
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val allGranted = permissions.entries.all { it.value }
-        if (allGranted) {
+        // نتحقق من الأذونات الأساسية للتشغيل (الموقع والوايفاي)
+        val isLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+
+        val isNearbyGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions[Manifest.permission.NEARBY_WIFI_DEVICES] == true
+        } else {
+            true
+        }
+
+        if (isLocationGranted && isNearbyGranted) {
+            // تم منح الأذونات الأساسية بنجاح
             checkAndRequestBatteryOptimization()
             startBridgeServerService()
         } else {
             Toast.makeText(
                 this,
-                "يلزم تقديم جميع الأذونات لتمكين بث الواي فاي وتوليد الشبكة!",
+                "يلزم إذن الموقع والأجهزة المجاورة لتفعيل بث الواي فاي!",
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -80,7 +91,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        unregisterReceiver(hotspotReceiver)
+        try {
+            unregisterReceiver(hotspotReceiver)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun setupListeners() {
@@ -94,39 +109,43 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * التحقق من الأذونات المطلوبة حسب إصدار النظام قبل بدء الخدمة
+     * فحص الأذونات المطلوبة بذكاء حسب إصدار أندرويد
      */
     private fun checkPermissionsAndStart() {
-        val requiredPermissions = mutableListOf<String>()
+        val permissionsToRequest = mutableListOf<String>()
 
-        // أذونات الموقع الجغرافي الأساسية
-        requiredPermissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
-        requiredPermissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+        // 1. أذونات الموقع الأساسية (ضرورية للـ Hotspot والـ LocalOnlyHotspot في أندرويد)
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
+            permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+        }
 
-        // إذن الأجهزة المجاورة للواي فاي في أندرويد 12+
+        // 2. إذن الأجهزة المجاورة (Android 12+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            requiredPermissions.add(Manifest.permission.NEARBY_WIFI_DEVICES)
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(Manifest.permission.NEARBY_WIFI_DEVICES)
+            }
         }
 
-        // إذن الإشعارات لأندرويد 13+
+        // 3. إذن الإشعارات (Android 13+) - اختياري لعدم تعطيل البث إذا رفضه المستخدم
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            requiredPermissions.add(Manifest.permission.POST_NOTIFICATIONS)
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
 
-        val missingPermissions = requiredPermissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-
-        if (missingPermissions.isNotEmpty()) {
-            permissionLauncher.launch(missingPermissions.toTypedArray())
+        if (permissionsToRequest.isNotEmpty()) {
+            // طلب الأذونات المتبقية فقط
+            permissionLauncher.launch(permissionsToRequest.toTypedArray())
         } else {
+            // جميع الأذونات ممنوحة بالفعل
             checkAndRequestBatteryOptimization()
             startBridgeServerService()
         }
     }
 
     /**
-     * طلب تجاهل تحسينات البطارية لضمان عدم إغلاق سيرفر البروكسي في الخلفية
+     * طلب استثناء تحسينات البطارية لتجنب قتل السيرفر في الخلفية
      */
     @SuppressLint("BatteryLife")
     private fun checkAndRequestBatteryOptimization() {
@@ -140,7 +159,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     startActivity(intent)
                 } catch (e: Exception) {
-                    Toast.makeText(this, "يرجى تعطيل تحسين البطارية للتطبيق من الإعدادات", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "يرجى السماح للتطبيق بالعمل في الخلفية من الإعدادات", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -160,24 +179,25 @@ class MainActivity : AppCompatActivity() {
             putExtra(HotspotService.EXTRA_GATEWAY_Y, gatewayY)
         }
 
-        ContextCompat.startForegroundService(this, intent)
-        binding.tvStatus.text = "جاري تهيئة بث الشبكة وتوليد الكود..."
+        try {
+            ContextCompat.startForegroundService(this, intent)
+            binding.tvStatus.text = "جاري تهيئة بث الشبكة وتوليد الكود..."
+        } catch (e: Exception) {
+            Toast.makeText(this, "فشل بدء الخدمة: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun updateUiWithActualHotspot(ssid: String, pass: String) {
         isServerRunning = true
         binding.btnToggleServer.text = "إيقاف خادم البث"
 
-        // تحديث حقول الواجهة بالاسم والكلمة الحقيقية المفعّلة في النظام
         binding.etSsid.setText(ssid)
         binding.etPassword.setText(pass)
 
-        // قراءة قيم IP المخصصة المعروضة
         val subnetX = binding.etSubnetX.text.toString().ifEmpty { "10" }
         val hostY = binding.etHostY.text.toString().ifEmpty { "1" }
         val serverIp = "192.168.$subnetX.$hostY"
 
-        // توليد الـ QR Code شاملاً اسم الشبكة، الباسورد، وعنوان السيرفر
         val qrBitmap = QRCodeGenerator.generateWifiQrCode(ssid, pass)
         if (qrBitmap != null) {
             binding.ivQrCode.setImageBitmap(qrBitmap)
