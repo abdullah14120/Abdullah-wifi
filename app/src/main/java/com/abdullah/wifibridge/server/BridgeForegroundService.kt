@@ -25,19 +25,20 @@ class BridgeForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // استقبال المتغيرات الممررة من واجهة المستخدم
+        // استقبال المتغيرات الممررة من واجهة المستخدم بما فيها خادم الـ DNS
         val subnetX = intent?.getIntExtra("SUBNET_X", 50) ?: 50
         val gatewayY = intent?.getIntExtra("GATEWAY_Y", 1) ?: 1
         val ssidName = intent?.getStringExtra("SSID_NAME") ?: "Abdullah_Bridge_Root"
         val ssidPassword = intent?.getStringExtra("SSID_PASSWORD") ?: "12345678"
+        val dnsServer = intent?.getStringExtra("DNS_SERVER") ?: "1.1.1.1"
 
-        // بدء الخدمة الأمامية مع رسالة واضحة تحتوي على اسم الشبكة والنطاق
-        val notification = createNotification("جاري بث ($ssidName) على 192.168.$subnetX.$gatewayY عبر الروت...")
+        // بدء الخدمة الأمامية مع رسالة واضحة تحتوي على اسم الشبكة، النطاق، وخادم الـ DNS الموثوق
+        val notification = createNotification("بث ($ssidName) | 192.168.$subnetX.$gatewayY | DNS: $dnsServer")
         startForeground(NOTIFICATION_ID, notification)
 
         Thread {
             try {
-                // 1. تفعيل IP Forwarding في نواة النظام (Kernel)
+                // 1. تفعيل IP Forwarding في نواة النظام (Kernel) لتمرير البيانات بين الواجهات
                 RootNetworkMasterEngine.enableIpForwarding()
 
                 // 2. ضبط إعدادات نقطة الاتصال (SoftAP) بالاسم وكلمة المرور وتفعيلها إجبارياً
@@ -52,6 +53,9 @@ class BridgeForegroundService : Service() {
 
                 // 4. تطبيق الـ Subnet المخصص (الآي بي وجهاز التوجيه) وقواعد الجدار الناري NAT
                 RootNetworkMasterEngine.setupCustomSubnetAndNat(subnetX, gatewayY, wan, hotspotInterface)
+
+                // 5. تطبيق وقفل توجيه الـ DNS قسرياً عبر قواعد iptables للـ DNS المختار
+                RootNetworkMasterEngine.applyForcedDnsRedirection(hotspotInterface, dnsServer)
 
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -91,7 +95,7 @@ class BridgeForegroundService : Service() {
 
     private fun createNotification(message: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("تطبيق عبدالله للشبكات (مروت)")
+            .setContentTitle("تطبيق عبدالله للشبكات (مروت - DNS آمن)")
             .setContentText(message)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setPriority(NotificationCompat.PRIORITY_LOW)
