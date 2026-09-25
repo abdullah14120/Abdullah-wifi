@@ -25,31 +25,30 @@ object WifiDirectBridgeEngine {
         }
 
         try {
+            // إنشاء الـ ActionListener بالطريقة الصحيحة تماماً ككائن مجهول مطبق للواجهة
+            val actionListener = object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    Log.i(TAG, "Wi-Fi Direct Group created successfully!")
+                    // جلب تفاصيل الشبكة والكلمة السرية المنشأة تلقائياً
+                    getGroupDetails(manager, channel, callback)
+                }
+
+                override fun onFailure(reason: Int) {
+                    Log.e(TAG, "Failed to create Wi-Fi Direct Group. Reason code: $reason")
+                    callback(false, null, null)
+                }
+            }
+
             // استخدام الـ Reflection لإنشاء مجموعة P2P اجبارية (Group Owner)
-            // هذه الطريقة هي السر خلف التطبيقات القديمة المتوافقة مع أندرويد 8
             val method: Method = manager.javaClass.getDeclaredMethod(
                 "createGroup",
                 WifiP2pManager.Channel::class.java,
                 WifiP2pManager.ActionListener::class.java
             )
             
-            method.invoke(manager, channel, object : WifiP2pManager.ActionListener {
-                object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() {
-                        Log.i(TAG, "Wi-Fi Direct Group created successfully!")
-                        // جلب تفاصيل الشبكة والكلمة السرية المنشأة تلقائياً
-                        getGroupDetails(manager, channel, callback)
-                    }
+            // استدعاء الانعكاس مرة واحدة وبشكل صحيح تماماً
+            method.invoke(manager, channel, actionListener)
 
-                    override fun onFailure(reason: Int) {
-                        Log.e(TAG, "Failed to create Wi-Fi Direct Group. Reason code: $reason")
-                        callback(false, null, null)
-                    }
-                }.let { listener ->
-                    // استدعاء مباشر للانعكاس
-                    method.invoke(manager, channel, listener)
-                }
-            })
         } catch (e: Exception) {
             Log.e(TAG, "Reflection error while creating Wi-Fi Direct group", e)
             callback(false, null, null)
@@ -67,7 +66,8 @@ object WifiDirectBridgeEngine {
                 WifiP2pManager.Channel::class.java,
                 WifiP2pManager.GroupInfoListener::class.java
             )
-            method.invoke(manager, channel, WifiP2pManager.GroupInfoListener { group ->
+            
+            val groupInfoListener = WifiP2pManager.GroupInfoListener { group ->
                 if (group != null) {
                     val ssid = group.networkName // عادة يبدأ بـ DIRECT-xx
                     val password = group.passphrase // كلمة المرور الديناميكية
@@ -76,7 +76,10 @@ object WifiDirectBridgeEngine {
                 } else {
                     callback(true, "DIRECT-Redmi-Bridge", "12345678")
                 }
-            })
+            }
+
+            method.invoke(manager, channel, groupInfoListener)
+
         } catch (e: Exception) {
             Log.e(TAG, "Error requesting group info", e)
             callback(false, null, null)
@@ -91,19 +94,23 @@ object WifiDirectBridgeEngine {
         val channel = manager?.initialize(context, context.mainLooper, null) ?: return
         
         try {
-            val method: Method = manager.javaClass.getDeclaredMethod(
-                "removeGroup",
-                WifiP2pManager.Channel::class.java,
-                WifiP2pManager.ActionListener::class.java
-            )
-            method.invoke(manager, channel, object : WifiP2pManager.ActionListener {
+            val actionListener = object : WifiP2pManager.ActionListener {
                 override fun onSuccess() {
                     Log.i(TAG, "Wi-Fi Direct Group removed successfully.")
                 }
                 override fun onFailure(reason: Int) {
                     Log.w(TAG, "Failed to remove Wi-Fi Direct Group. Reason: $reason")
                 }
-            })
+            }
+
+            val method: Method = manager.javaClass.getDeclaredMethod(
+                "removeGroup",
+                WifiP2pManager.Channel::class.java,
+                WifiP2pManager.ActionListener::class.java
+            )
+            
+            method.invoke(manager, channel, actionListener)
+
         } catch (e: Exception) {
             Log.e(TAG, "Error removing Wi-Fi Direct group", e)
         }
