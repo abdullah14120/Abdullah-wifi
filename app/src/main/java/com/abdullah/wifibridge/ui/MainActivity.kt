@@ -44,10 +44,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         ContextCompat.startForegroundService(this, intent)
-        
+
         isServerRunning = true
         binding.btnToggleServer.text = "إيقاف البث"
-        
+
         val config = NetworkConfig(subnetX, hostY, gatewayY)
         binding.tvStatus.text = "البث يعمل الآن على:\nIP: ${config.localIpAddress}\nGateway: ${config.routerGatewayAddress}"
         Toast.makeText(this, "تم بدء تشغيل شبكة البث المخصصة", Toast.LENGTH_SHORT).show()
