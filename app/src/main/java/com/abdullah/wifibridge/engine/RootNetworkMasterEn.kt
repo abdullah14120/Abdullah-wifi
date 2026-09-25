@@ -40,18 +40,25 @@ object RootNetworkMasterEngine {
     }
 
     /**
-     * تعديل اسم الشبكة (SSID) وكلمة المرور (Password) عبر صلاحيات الروت
-     * ملاحظة: يتطلب أن تكون كلمة المرور 8 خانات على الأقل لـ WPA2.
+     * ضبط إعدادات نقطة الاتصال (SoftAP) بالاسم وكلمة المرور وتفعيلها إجبارياً دفعة واحدة
+     */
+    fun configureAndStartSoftAp(ssid: String, password: String): Boolean {
+        val commands = listOf(
+            "svc wifi disable", // تعطيل الواي فاي العادي لمنع التداخل الهاردويري
+            "cmd wifi set-softap-enabled false",
+            "cmd wifi set-softap-configuration ssid \"$ssid\" passphrase \"$password\"",
+            "cmd wifi set-softap-enabled true"
+        )
+        return executeRootCommandsBatch(commands)
+    }
+
+    /**
+     * تعديل اسم الشبكة (SSID) وكلمة المرور (Password) عبر صلاحيات الروت فقط
      */
     fun updateSoftApConfiguration(ssid: String, password: String): Boolean {
         val commands = listOf(
-            // إيقاف نقطة البث مؤقتاً لتطبيق التعديل بأمان دون تداخل
             "cmd wifi set-softap-enabled false",
-            
-            // استخدام أمر نظام أندرويد لتعديل إعدادات الـ Softap المباشرة
             "cmd wifi set-softap-configuration ssid \"$ssid\" passphrase \"$password\"",
-            
-            // إعادة تشغيل نقطة البث بالتهيئة والاسم الجديد
             "cmd wifi set-softap-enabled true"
         )
         return executeRootCommandsBatch(commands)
@@ -62,7 +69,7 @@ object RootNetworkMasterEngine {
      */
     fun startSystemSoftAp(): Boolean {
         val commands = listOf(
-            "svc wifi disable", // إيقاف الواي فاي العادي لمنع التعارض في كارت الشبكة
+            "svc wifi disable",
             "cmd wifi set-softap-enabled true"
         )
         return executeRootCommandsBatch(commands)
@@ -81,20 +88,35 @@ object RootNetworkMasterEngine {
     fun setupCustomSubnetAndNat(subnetX: Int, gatewayY: Int, outboundInterface: String, hotspotInterface: String): Boolean {
         val customGatewayIp = "192.168.$subnetX.$gatewayY"
         val commands = listOf(
-            // 1. تنظيف أي قواعد جدار حماية (iptables) سابقة لمنع التداخل
+            // 1. تنظيف جداول iptables الأساسية وnat لمنع التداخل مع القواعد القديمة
             "iptables -F",
             "iptables -t nat -F",
             "iptables -X",
+            "iptables -t nat -X",
             
-            // 2. إعطاء الآي بي المخصص الذي حددته لواجهة البث
+            // 2. إعطاء الآي بي المخصص لواجهة البث ورفع حالة الواجهة (UP)
             "ip addr flush dev $hotspotInterface",
             "ip addr add $customGatewayIp/24 dev $hotspotInterface",
             "ip link set $hotspotInterface up",
 
-            // 3. تفعيل قواعد الـ NAT والتوجيه للخارج عبر شبكة البيانات أو الواي فاي الرئيسي (WAN)
+            // 3. تفعيل قواعد الـ NAT والتوجيه للخارج (Forwarding & Masquerading)
             "iptables -A FORWARD -i $hotspotInterface -o $outboundInterface -j ACCEPT",
             "iptables -A FORWARD -i $outboundInterface -o $hotspotInterface -m state --state RELATED,ESTABLISHED -j ACCEPT",
             "iptables -t nat -A POSTROUTING -o $outboundInterface -j MASQUERADE"
+        )
+        return executeRootCommandsBatch(commands)
+    }
+
+    /**
+     * تطبيق قواعد اعتراض وتوجيه الـ DNS قسرياً (DNS Hijacking / Redirection) لمنع التسريب وضمان أمان الشبكة
+     */
+    fun applyForcedDnsRedirection(hotspotInterface: String, targetDnsIp: String): Boolean {
+        val commands = listOf(
+            // اعتراض طلبات UDP على المنفذ 53 القادمة من الأجهزة المتصلة وتحويلها للخادم الموثوق
+            "iptables -t nat -A PREROUTING -i $hotspotInterface -p udp --dport 53 -j DNAT --to-destination $targetDnsIp:53",
+            
+            // اعتراض طلبات TCP على المنفذ 53 القادمة من الأجهزة المتصلة وتحويلها للخادم الموثوق
+            "iptables -t nat -A PREROUTING -i $hotspotInterface -p tcp --dport 53 -j DNAT --to-destination $targetDnsIp:53"
         )
         return executeRootCommandsBatch(commands)
     }
@@ -138,7 +160,7 @@ object RootNetworkMasterEngine {
     }
 
     /**
-     * تنفيذ مجموعة أوامر روت بشكل متسلسل (Batch)
+     * تنفيذ مجموعة أوامر روت بشكل متسلسل وبطريقة دفعة واحدة (Batch)
      */
     private fun executeRootCommandsBatch(commands: List<String>): Boolean {
         var process: Process? = null
