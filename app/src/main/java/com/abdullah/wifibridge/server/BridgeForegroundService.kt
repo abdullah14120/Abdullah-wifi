@@ -1,11 +1,11 @@
-package com.abdullah.wifibridge.service
+package com.abdullah.wifibridge.server
 
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
-.os.Build
+import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.abdullah.wifibridge.R
@@ -35,18 +35,15 @@ class BridgeForegroundService : Service() {
             // 1. تفعيل IP Forwarding للنواة
             RootNetworkMasterEngine.enableIpForwarding()
 
-            // 2. تفعيل نقطة اتصال افتراضية أو إجبار واجهة البث على الـ Subnet المخصص عبر أوامر الروت
-            // مثال: تعيين الـ IP المخصص لبطاقة الواي فاي المحلية (ap0 أو wlan0)
+            // 2. إعداد الواجهة والآي بي المخصص الذي حددته
             val hotspotInterface = NetworkInterfaceScanner.getHotspotInterface()
             val customGatewayIp = "192.168.$subnetX.$gatewayY"
             
-            // تطبيق الـ IP المخصص على واجهة البث بواسطة أداة ip address المدمجة في أندرويد (صلاحية روت)
             RootNetworkMasterEngine.executeRootCommand("ip addr add $customGatewayIp/24 dev $hotspotInterface")
 
-            // 3. جلب الواجهة النشطة للإنترنت (Data أو Wi-Fi الأساسي) وتطبيق قواعد NAT
+            // 3. تطبيق قواعد الـ NAT مع الواجهة الخارجية النشطة
             val wan = NetworkInterfaceScanner.getActiveWanInterface() ?: "rmnet_data0"
             RootNetworkMasterEngine.setupNatRules(wan, hotspotInterface)
-
         }.start()
 
         return START_STICKY
