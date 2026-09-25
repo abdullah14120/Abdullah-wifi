@@ -3,6 +3,7 @@ package com.abdullah.wifibridge.engine
 import android.util.Log
 import java.io.DataOutputStream
 import java.io.IOException
+import java.util.Random
 
 object RootNetworkMasterEngine {
 
@@ -80,6 +81,37 @@ object RootNetworkMasterEngine {
      */
     fun stopSystemSoftAp(): Boolean {
         return executeRootCommand("cmd wifi set-softap-enabled false")
+    }
+
+    /**
+     * توليد وتطبيق عنوان MAC عشوائي (MAC Spoofing) لواجهة البث لضمان بصمة شبكية جديدة كلياً على مستوى الطبقة الثانية (Layer 2)
+     */
+    fun randomizeHotspotMac(hotspotInterface: String): Boolean {
+        val randomMac = generateRandomLocallyAdministeredMac()
+        val commands = listOf(
+            "ip link set $hotspotInterface down",
+            "ip link set dev $hotspotInterface address $randomMac",
+            "ip link set $hotspotInterface up"
+        )
+        val success = executeRootCommandsBatch(commands)
+        if (success) {
+            Log.i(TAG, "Successfully spoofed MAC address for $hotspotInterface to $randomMac")
+        } else {
+            Log.w(TAG, "Failed to spoof MAC address for $hotspotInterface (Interface might still be initializing)")
+        }
+        return success
+    }
+
+    /**
+     * دالة مساعدة لتوليد عنوان MAC عشوائي محلي الصنع صالح للشبكات اللاسلكية
+     */
+    private fun generateRandomLocallyAdministeredMac(): String {
+        val random = Random()
+        val macBytes = ByteArray(6)
+        random.nextBytes(macBytes)
+        // تعيين البت الثاني في البايت الأول ليكون العنوان محلياً (Locally Administered) ومنع التعارض العالمي
+        macBytes[0] = ((macBytes[0].toInt() and 0xfe) or 0x02).toByte()
+        return macBytes.joinToString(":") { "%02x".format(it) }
     }
 
     /**
