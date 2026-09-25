@@ -28,22 +28,26 @@ class BridgeForegroundService : Service() {
         val subnetX = intent?.getIntExtra("SUBNET_X", 50) ?: 50
         val gatewayY = intent?.getIntExtra("GATEWAY_Y", 1) ?: 1
 
-        val notification = createNotification("البث يعمل على 192.168.$subnetX.$gatewayY وبدون قيود...")
+        val notification = createNotification("البث يعمل على 192.168.$subnetX.$gatewayY عبر الروت...")
         startForeground(NOTIFICATION_ID, notification)
 
         Thread {
             // 1. تفعيل IP Forwarding للنواة
             RootNetworkMasterEngine.enableIpForwarding()
 
-            // 2. إعداد الواجهة والآي بي المخصص الذي حددته
-            val hotspotInterface = NetworkInterfaceScanner.getHotspotInterface()
-            val customGatewayIp = "192.168.$subnetX.$gatewayY"
-            
-            RootNetworkMasterEngine.executeRootCommand("ip addr add $customGatewayIp/24 dev $hotspotInterface")
+            // 2. تشغيل خدمة نقطة الاتصال في النظام إجبارياً (SoftAP)
+            RootNetworkMasterEngine.startSystemSoftAp()
 
-            // 3. تطبيق قواعد الـ NAT مع الواجهة الخارجية النشطة
+            // انتظار ثوانٍ معدودة حتى تقوم الشريحة بتهيئة الواجهة (ap0 أو wlan0)
+            Thread.sleep(2000)
+
+            // 3. جلب واجهة البث والواجهة النشطة للإنترنت (WAN)
+            val hotspotInterface = NetworkInterfaceScanner.getHotspotInterface() ?: "ap0"
             val wan = NetworkInterfaceScanner.getActiveWanInterface() ?: "rmnet_data0"
-            RootNetworkMasterEngine.setupNatRules(wan, hotspotInterface)
+
+            // 4. تطبيق الـ Subnet المخصص (الآي بي وجهاز التوجيه) وقواعد الـ NAT
+            RootNetworkMasterEngine.setupCustomSubnetAndNat(subnetX, gatewayY, wan, hotspotInterface)
+
         }.start()
 
         return START_STICKY
