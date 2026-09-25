@@ -14,6 +14,8 @@ import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.abdullah.wifibridge.engine.RootNetworkMasterEngine
 import com.abdullah.wifibridge.engine.WifiDirectBridgeEngine
+import java.net.NetworkInterface
+import java.util.Collections
 
 class BridgeForegroundService : Service() {
 
@@ -22,7 +24,6 @@ class BridgeForegroundService : Service() {
         private const val CHANNEL_ID = "wifi_bridge_service_channel"
         private const val NOTIFICATION_ID = 1337
         
-        // ثوابت الإذاعة الداخلية لتحديث الواجهة (MainActivity)
         const val ACTION_BRIDGE_STATUS = "com.abdullah.wifibridge.ACTION_BRIDGE_STATUS"
         const val EXTRA_IS_ACTIVE = "IS_ACTIVE"
         const val EXTRA_STATUS_MESSAGE = "STATUS_MESSAGE"
@@ -30,8 +31,7 @@ class BridgeForegroundService : Service() {
         const val EXTRA_ACTIVE_PASSWORD = "ACTIVE_PASSWORD"
     }
 
-    private var outboundInterface = "rmnet_data0" // واجهة بيانات الجوال الافتراضية للخروج (WAN)
-    private var hotspotInterface = "p2p-wlan0-0"  // واجهة الـ Wi-Fi Direct الافتراضية
+    private var hotspotInterface = "p2p-wlan0-0"  // واجهة الـ Wi-Fi Direct الافتراضية للبث
 
     override fun onCreate() {
         super.onCreate()
@@ -44,11 +44,9 @@ class BridgeForegroundService : Service() {
         val gatewayY = intent?.getIntExtra("GATEWAY_Y", 1) ?: 1
         val customDns = intent?.getStringExtra("DNS_SERVER") ?: "1.1.1.1"
         
-        // 🟢 التقاط اسم الشبكة وكلمة المرور المدخلة يدوياً من MainActivity (إن وجدت)
         val customSsid = intent?.getStringExtra("SSID_NAME")
         val customPassword = intent?.getStringExtra("SSID_PASSWORD")
 
-        // بدء الخدمة في الواجهة الأمامية لمنع نظام أندرويد من قتلها
         val notification = buildNotification("جاري تهيئة بيئة الجسر وتفعيل Wi-Fi Direct...")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -61,30 +59,26 @@ class BridgeForegroundService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        // تنفيذ دورة التشغيل المتكاملة عبر مسار مستقل (Background Thread) لمنع تجميد واجهة المستخدم
         Thread {
             try {
-                Log.i(TAG, "=== Starting Wi-Fi Direct Bridge Pipeline ===")
+                Log.i(TAG, "=== Starting Wi-Fi Direct Bridge Pipeline (Wi-Fi STA to P2P) ===")
 
                 // 1. تفعيل صلاحيات الـ IP Forwarding ونواة اللينكس
                 RootNetworkMasterEngine.enableIpForwarding()
 
-                // 2. تنظيف البيئة مسبقاً لإزالة أي تعارض سابق في قواعد الـ iptables
+                // 2. تنظيف البيئة مسبقاً لمنع أي تعارض في الـ iptables
                 RootNetworkMasterEngine.performDeepEnvironmentSanitization(hotspotInterface)
 
                 // 3. إنشاء شبكة Wi-Fi Direct (P2P Group Owner)
                 WifiDirectBridgeEngine.createWifiP2pGroup(applicationContext) { success, generatedSsid, generatedPassword ->
                     if (success) {
-                        // دمج القيم: اعتماد إدخال المستخدم إذا وجد، وإلا فالقيم المولدّة تلقائياً
                         val finalSsid = if (!customSsid.isNullOrEmpty()) customSsid else (generatedSsid ?: "Android_Bridge")
                         val finalPass = if (!customPassword.isNullOrEmpty()) customPassword else (generatedPassword ?: "")
 
                         Log.i(TAG, "Wi-Fi Direct Group Active! SSID: $finalSsid | Password: $finalPass")
                         
-                        // تحديث الإشعار باسم الشبكة المنشأة
                         updateNotification("البث نشط: $finalSsid | كلمة المرور: $finalPass")
 
-                        // 🚀 إرسال البيانات فوراً للواجهة (MainActivity) لعرض الباركود والاتصال
                         sendBridgeStatusBroadcast(
                             isActive = true,
                             message = "تم تشغيل الجسر والبث بنجاح ✔️",
@@ -92,21 +86,25 @@ class BridgeForegroundService : Service() {
                             password = finalPass
                         )
 
-                        // 4. تطبيق تزييف الـ MAC Address لحماية الخصوصية على الواجهة النشطة
+                        // 4. تطبيق تزييف الـ MAC Address لواجهة البث لزيادة الأمان
                         RootNetworkMasterEngine.randomizeHotspotMac(hotspotInterface)
 
-                        // 5. تطبيق إعدادات الـ Subnet المخصص وقواعد الـ NAT للربط بالإنترنت (WAN)
+                        // 5. 🌐 الاكتشاف التلقائي والديناميكي لواجهة الخروج (الواي فاي الأساسي wlan0)
+                        val activeWanInterface = RootNetworkMasterEngine.detectActiveWanInterface()
+                        Log.i(TAG, "Detected Active WAN Interface (Wi-Fi STA): $activeWanInterface")
+
+                        // 6. تطبيق إعدادات الـ Subnet المخصص وقواعد الـ NAT للربط وتوجيه الإنترنت
                         val natSuccess = RootNetworkMasterEngine.setupCustomSubnetAndNat(
-                            subnetX, gatewayY, outboundInterface, hotspotInterface
+                            subnetX, gatewayY, activeWanInterface, hotspotInterface
                         )
 
                         if (natSuccess) {
-                            Log.i(TAG, "Custom Subnet & NAT Routing applied successfully!")
+                            Log.i(TAG, "Custom Subnet & NAT Routing applied successfully via $activeWanInterface!")
                         } else {
                             Log.w(TAG, "Failed to apply NAT routing rules, retrying with fallback...")
                         }
 
-                        // 6. فرض توجيه الـ DNS قسرياً (DNS Hijacking) للسرعة والأمان
+                        // 7. فرض توجيه الـ DNS قسرياً (DNS Hijacking)
                         RootNetworkMasterEngine.applyForcedDnsRedirection(hotspotInterface, customDns)
                         Log.i(TAG, "Forced DNS Redirection applied to: $customDns")
 
@@ -114,7 +112,6 @@ class BridgeForegroundService : Service() {
                         Log.e(TAG, "Failed to create Wi-Fi Direct Group.")
                         updateNotification("فشل إنشاء شبكة البث عبر الـ P2P!")
 
-                        // إرسال حالة الفشل للواجهة لإخفاء الباركود وتحديث الحالة
                         sendBridgeStatusBroadcast(
                             isActive = false,
                             message = "فشل إنشاء شبكة البث عبر الـ P2P ❌",
@@ -142,7 +139,6 @@ class BridgeForegroundService : Service() {
         super.onDestroy()
         Log.i(TAG, "Stopping Bridge Service and cleaning up network environment...")
         
-        // إرسال إشعار توقف الجسر للواجهة
         sendBridgeStatusBroadcast(
             isActive = false,
             message = "تم إيقاف الجسر بنجاح.",
@@ -150,7 +146,6 @@ class BridgeForegroundService : Service() {
             password = ""
         )
 
-        // تنظيف شامل وإيقاف مجموعة الـ P2P وقواعد الحماية عند إغلاق التطبيق
         Thread {
             try {
                 WifiDirectBridgeEngine.removeWifiP2pGroup(applicationContext)
@@ -161,9 +156,6 @@ class BridgeForegroundService : Service() {
         }.start()
     }
 
-    /**
-     * دالة مركزية لإرسال حالة الجسر والبيانات الحية إلى واجهة المستخدم (MainActivity)
-     */
     private fun sendBridgeStatusBroadcast(isActive: Boolean, message: String, ssid: String, password: String) {
         val intent = Intent(ACTION_BRIDGE_STATUS).apply {
             putExtra(EXTRA_IS_ACTIVE, isActive)
