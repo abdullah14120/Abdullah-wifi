@@ -1,6 +1,9 @@
 package com.abdullah.wifibridge
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
@@ -13,6 +16,7 @@ import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.abdullah.wifibridge.engine.RootNetworkMasterEngine
 import com.abdullah.wifibridge.server.BridgeForegroundService
 
@@ -29,6 +33,26 @@ class MainActivity : AppCompatActivity() {
 
     private var isBridgeActive = false
     private var selectedDnsServer = "1.1.1.1" // القيمة الافتراضية الموثوقة (Cloudflare)
+
+    // استقبال التحديثات والحالة من خدمة الخلفية BridgeForegroundService
+    private val bridgeStatusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            intent?.let {
+                val statusMessage = it.getStringExtra("STATUS_MESSAGE") ?: return
+                val isActive = it.getBooleanExtra("IS_ACTIVE", false)
+                
+                statusTextView.text = statusMessage
+                if (isActive) {
+                    statusTextView.setTextColor(Color.parseColor("#4CAF50"))
+                    isBridgeActive = true
+                    btnToggleBridge.text = "إيقاف الجسر الشفاف والبث"
+                    btnToggleBridge.setBackgroundColor(Color.RED)
+                } else {
+                    statusTextView.setTextColor(Color.parseColor("#FF9800"))
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,6 +81,21 @@ class MainActivity : AppCompatActivity() {
                 stopBridgeService()
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // تسجيل مستقبل البث المحلي
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            bridgeStatusReceiver,
+            IntentFilter("com.abdullah.wifibridge.ACTION_BRIDGE_STATUS")
+        )
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // إلغاء التسجيل لتجنب تسريب الذاكرة (Memory Leaks)
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(bridgeStatusReceiver)
     }
 
     /**
@@ -179,7 +218,7 @@ class MainActivity : AppCompatActivity() {
         isBridgeActive = true
         btnToggleBridge.text = "إيقاف الجسر الشفاف والبث"
         btnToggleBridge.setBackgroundColor(Color.RED)
-        Toast.makeText(this, "جاري البث ($ssidInput) على Subnet: 192.168.$subnetX.$gatewayY | DNS: $selectedDnsServer", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "جاري إعداد البث ($ssidInput)...", Toast.LENGTH_LONG).show()
     }
 
     /**
@@ -192,6 +231,8 @@ class MainActivity : AppCompatActivity() {
         isBridgeActive = false
         btnToggleBridge.text = "تشغيل الجسر الشفاف والبث"
         btnToggleBridge.setBackgroundColor(Color.parseColor("#4CAF50"))
+        statusTextView.text = "حالة الجسر: متوقف حالياً."
+        statusTextView.setTextColor(Color.parseColor("#757575"))
         Toast.makeText(this, "تم إيقاف البث وإعادة تعيين الشبكة بنجاح.", Toast.LENGTH_SHORT).show()
     }
 }
