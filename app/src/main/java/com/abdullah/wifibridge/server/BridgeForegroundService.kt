@@ -76,8 +76,11 @@ class BridgeForegroundService : android.app.Service() {
                 // الخطوة 4: تفعيل الـ IP Forwarding في النواة
                 RootNetworkMasterEngine.enableIpForwarding()
 
-                // الخطوة 5: تشغيل نقطة الاتصال (SoftAP) إجبارياً وتجاوز عشوائية النظام بالاسم وكلمة المرور
-                RootNetworkMasterEngine.forceConfigureAndStartSoftAp(ssidName, ssidPassword)
+                // الخطوة 5: تشغيل نقطة الاتصال (SoftAP) عبر الآلية الذكية الشاملة مع الحلول البديلة لضمان ظهور الشبكة
+                val hotspotStarted = RootNetworkMasterEngine.startHotspotWithManager(applicationContext, ssidName, ssidPassword)
+                if (!hotspotStarted) {
+                    Log.w(TAG, "Warning: Hotspot start manager returned false, but pipeline will attempt interface stabilization.")
+                }
 
                 // الخطوة 6: إعادة فحص واستقرار واجهة البث بعد تفعيل الـ SoftAP الفعلي
                 var hotspotInterface: String? = null
