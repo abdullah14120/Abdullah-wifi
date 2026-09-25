@@ -224,7 +224,7 @@
             android:enabled="false"
             android:layout_marginBottom="16dp" />
 
-        <!-- 🆕 بطاقة عرض باركود الواي فاي (تظهر فقط عند نجاح تشغيل الشبكة) -->
+        <!-- بطاقة عرض باركود الواي فاي (تظهر فقط عند نجاح تشغيل الشبكة) -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -272,7 +272,6 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:orientation="vertical"
-                pid:padding="12dp"
                 android:padding="12dp">
 
                 <TextView
