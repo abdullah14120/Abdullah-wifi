@@ -13,14 +13,18 @@ import java.net.InetAddress
 
 class StaticWifiManager(private val context: Context) {
 
+    /**
+     * إنشاء إعدادات Static IP متوافقة مع Android 10+ (API 29+)
+     */
     @RequiresApi(Build.VERSION_CODES.S)
     fun createStaticIpConfiguration(customIp: String, gatewayIp: String): StaticIpConfiguration {
         val ipInet = InetAddress.getByName(customIp)
         val gatewayInet = InetAddress.getByName(gatewayIp)
 
+        //  إنشاء LinkAddress بشكل صحيح بتمرير InetAddress وطول الـ Prefix (مثلاً 24 لـ Subnet Mask 255.255.255.0)
         val linkAddress = LinkAddress(ipInet, 24)
 
-        // استخدام Builder لتجنب مشكلة Package-Private Constructor
+        // بناء StaticIpConfiguration باستخدام الـ Builder المعتمد بدلاً من الاستدعاء المباشر
         return StaticIpConfiguration.Builder()
             .setIpAddress(linkAddress)
             .setGateway(gatewayInet)
@@ -28,6 +32,9 @@ class StaticWifiManager(private val context: Context) {
             .build()
     }
 
+    /**
+     * الاتصال بشبكة Wi-Fi محددة برمجياً
+     */
     @RequiresApi(Build.VERSION_CODES.Q)
     fun connectToBridgeNetwork(ssid: String, passphrase: String) {
         val specifier = WifiNetworkSpecifier.Builder()
@@ -44,6 +51,7 @@ class StaticWifiManager(private val context: Context) {
 
         connectivityManager.requestNetwork(request, object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
+                // ربط التطبيق بالشبكة الحالية لتمرير البيانات عبرها
                 connectivityManager.bindProcessToNetwork(network)
             }
         })
