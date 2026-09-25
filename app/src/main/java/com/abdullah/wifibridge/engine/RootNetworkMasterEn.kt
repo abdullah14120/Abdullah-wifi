@@ -90,7 +90,6 @@ object RootNetworkMasterEngine {
             "cmd wifi set-softap-enabled false",
             "killall hostapd 2>/dev/null || true",
             "killall dnsmasq 2>/dev/null || true",
-            // إجبار النظام على اعتماد الاسم وكلمة المرور ونوع التشفير
             "cmd wifi set-softap-configuration ssid \"$ssid\" passphrase \"$password\" security WPA2_PSK",
             "cmd wifi set-softap-enabled true"
         )
@@ -104,22 +103,19 @@ object RootNetworkMasterEngine {
     }
 
     /**
-     * 🧠 الدالة الشاملة المتقدمة: تشغيل الهوتسبت مع استخدام آليات بديلة (Fallback) لضمان ظهور الشبكة على كافة الأجهزة
+     * 🧠 الدالة الشاملة المتقدمة: تشغيل الهوتسبت مع استخدام آليات بديلة وتأكيد إرجاع القيمة (Boolean)
      */
     fun startHotspotWithManager(context: Context, ssid: String, password: String): Boolean {
-        try {
+        return try {
             Log.i(TAG, "Starting hotspot via primary hard enforcement...")
-            // 1. المحاولة الأولى عبر الأوامر الصارمة المباشرة
             if (forceConfigureAndStartSoftAp(ssid, password)) {
-                return true
+                return@try true
             }
 
             Log.w(TAG, "Primary method failed. Executing advanced recovery & fallback mechanisms...")
 
-            // 2. تفعيل إعدادات الربط العامة في النظام عبر الروت لتجاوز حظر الـ OEM
             executeRootCommand("settings put global tether_supported 1")
 
-            // 3. الحل البديل المتقدم: استخدام تدفق متسلسل لإعادة تشغيل خدمة الـ Wi-Fi والـ Tethering ومحاولة الرفع مجدداً
             val fallbackCommands = listOf(
                 "svc wifi disable",
                 "am force-stop com.android.settings",
@@ -132,18 +128,16 @@ object RootNetworkMasterEngine {
             val fallbackSuccess = executeRootCommandsBatch(fallbackCommands)
             if (fallbackSuccess) {
                 Log.i(TAG, "Fallback hotspot activation succeeded.")
-                return true
+                return@try true
             }
 
-            // 4. الطور الأخير: محاولة تفعيل الـ WifiManager برمجياً إذا سمح النظام بذلك
             val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
             wifiManager?.let {
-                // محاولة إجبار تشغيل الـ AP بالطريقة البرمجية التقليدية كملجأ أخير
                 @Suppress("DEPRECATION")
                 it.isWifiEnabled = false
             }
 
-            return false
+            false
         } catch (e: Exception) {
             Log.e(TAG, "Error in startHotspotWithManager execution", e)
             false
@@ -186,7 +180,7 @@ object RootNetworkMasterEngine {
     fun verifyActiveSoftApConfig(): String? {
         var process: Process? = null
         var os: DataOutputStream? = null
-        try {
+        return try {
             process = Runtime.getRuntime().exec("su")
             os = DataOutputStream(process.outputStream)
             os.writeBytes("cmd wifi get-softap-configuration\n")
