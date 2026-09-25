@@ -9,14 +9,23 @@ import com.google.zxing.qrcode.QRCodeWriter
 object QRCodeGenerator {
 
     /**
-     * توليد نص مطبق لمعايير الاتصال بالواي فاي القياسية (WIFI:S:ssid;T:WPA;P:password;;)
+     * توليد نص مطبق للمواصفات العالمية لربط الـ Wi-Fi عبر الـ QR Code
+     * الصيغة المطلوبة: WIFI:S:SSID;T:WPA;P:PASSWORD;H:false;;
      */
-    fun generateWifiQrCode(ssid: String, password: String, securityType: String = "WPA", size: Int = 512): Bitmap? {
-        val qrContent = if (password.isEmpty()) {
-            "WIFI:S:$ssid;T:nopass;;"
-        } else {
-            "WIFI:S:$ssid;T:$securityType;P:$password;;"
-        }
+    fun generateWifiQrCode(
+        ssid: String,
+        password: String,
+        securityType: String = "WPA", // WPA أو WPA2 أو WEP أو nopass
+        isHidden: Boolean = false,    // تحديد ما إذا كانت الشبكة مخفية
+        size: Int = 512
+    ): Bitmap? {
+        
+        val type = if (password.isEmpty()) "nopass" else securityType
+        val pass = if (password.isEmpty()) "" else password
+        val hiddenFlag = if (isHidden) "true" else "false"
+
+        // التنسيق القياسي بدعم الشبكات المخفية للتأكد من ربط الكاميرا
+        val qrContent = "WIFI:S:$ssid;T:$type;P:$pass;H:$hiddenFlag;;"
 
         return try {
             val hints = HashMap<EncodeHintType, Any>()
