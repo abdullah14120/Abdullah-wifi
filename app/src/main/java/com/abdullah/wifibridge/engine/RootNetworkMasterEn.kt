@@ -34,6 +34,57 @@ object RootNetworkMasterEngine {
     }
 
     /**
+     * 🛡️ بروتوكول التنظيف العميق (Deep Environment Sanitization Protocol)
+     * يقوم بتطهير النواة تماماً، مسح وتصفية جداول الـ iptables و ip6tables، تفريغ جدول الـ ARP،
+     * ومسح مخلفات ملفات التأجير لضمان سِجل نظيف تماماً (Clean Slate) وبصمة معدومة.
+     */
+    fun performDeepEnvironmentSanitization(hotspotInterface: String): Boolean {
+        Log.i(TAG, "=== Initiating Deep Environment Sanitization Protocol ===")
+        val sanitizationCommands = listOf(
+            // 1. تصفية وإلغاء كافة قواعد الجدار الناري IPv4 بالكامل وإعادة ضبط سياساتها الافتراضية
+            "iptables -F",
+            "iptables -t nat -F",
+            "iptables -t mangle -F",
+            "iptables -X",
+            "iptables -t nat -X",
+            "iptables -P INPUT ACCEPT",
+            "iptables -P FORWARD ACCEPT",
+            "iptables -P OUTPUT ACCEPT",
+
+            // 2. تصفية قواعد IPv6 لمنع أي تسريب خفي للحزم عبر بروتوكول النسخة السادسة
+            "ip6tables -F",
+            "ip6tables -t nat -F",
+            "ip6tables -t mangle -F",
+            "ip6tables -X",
+            "ip6tables -P INPUT ACCEPT",
+            "ip6tables -P FORWARD ACCEPT",
+            "ip6tables -P OUTPUT ACCEPT",
+
+            // 3. تفريغ جدول الـ ARP والـ Neighbor Cache لمسح سجلات الأجهزة المتصلة سابقاً بالفيزيائي
+            "ip neigh flush all",
+
+            // 4. إنزال واجهة البث مؤقتاً لتفريغ أي إعدادات عالقة من الجلسة السابقة
+            "ip link set $hotspotInterface down",
+            "ip addr flush dev $hotspotInterface",
+
+            // 5. مسح ملفات تأجير العناوين المؤقتة (DHCP Leases) لتجنب تكرار الـ IPs السابقة
+            "rm -rf /data/misc/dhcp/dnsmasq.leases",
+            "rm -f /data/misc/apex/com.android.wifi/*",
+
+            // 6. إعادة تعيين توجيه الحزم (IP Forwarding) للصفر مؤقتاً أثناء إعادة التطهير
+            "echo 0 > /proc/sys/net/ipv4/ip_forward"
+        )
+
+        val success = executeRootCommandsBatch(sanitizationCommands)
+        if (success) {
+            Log.i(TAG, "=== Deep Environment Sanitization Completed Successfully ===")
+        } else {
+            Log.w(TAG, "Some commands during deep sanitization encountered non-zero exit codes.")
+        }
+        return success
+    }
+
+    /**
      * تفعيل خاصية الـ IP Forwarding في نواة اللينكس للسماح بتمرير الحزم بين الشبكات
      */
     fun enableIpForwarding(): Boolean {
@@ -115,16 +166,27 @@ object RootNetworkMasterEngine {
     }
 
     /**
-     * إعداد Subnet مخصص، وتثبيت الآي بي على الواجهة، وتفعيل قواعد الـ NAT للتوجيه والخروج (WAN)
+     * توليد أرقام نطاق Subnet عشوائية ديناميكية (Dynamic Subnet Rotation) 
+     * لتغيير الآي بي الافتراضي والـ Gateway في كل دورة اتصال (لتجنب الثبات والتتبع).
+     * @return مصفوفة تتكون من [SubnetX, GatewayY]
+     */
+    fun generateDynamicSubnet(): Pair<Int, Int> {
+        val random = Random()
+        // اختيار رقم عشوائي للنطاق الثالث بين 10 و 200 لتجنب التصادم مع شبكات الراوترات المنزلية الشائعة (مثل 0 أو 1 أو 8)
+        val subnetX = random.nextInt(191) + 10 
+        val gatewayY = 1 // عادة يكون الجيتواي هو .1
+        return Pair(subnetX, gatewayY)
+    }
+
+    /**
+     * إعداد Subnet مخصص ديناميكي، وتثبيت الآي بي على الواجهة، وتفعيل قواعد الـ NAT للتوجيه والخروج (WAN)
      */
     fun setupCustomSubnetAndNat(subnetX: Int, gatewayY: Int, outboundInterface: String, hotspotInterface: String): Boolean {
         val customGatewayIp = "192.168.$subnetX.$gatewayY"
         val commands = listOf(
-            // 1. تنظيف جداول iptables الأساسية وnat لمنع التداخل مع القواعد القديمة
+            // 1. تنظيف القواعد المحلية للواجهة والتأكد من خلوها
             "iptables -F",
             "iptables -t nat -F",
-            "iptables -X",
-            "iptables -t nat -X",
             
             // 2. إعطاء الآي بي المخصص لواجهة البث ورفع حالة الواجهة (UP)
             "ip addr flush dev $hotspotInterface",
@@ -162,7 +224,10 @@ object RootNetworkMasterEngine {
             "iptables -t nat -F",
             "iptables -X",
             "iptables -t nat -X",
-            "cmd wifi set-softap-enabled false"
+            "ip6tables -F",
+            "ip6tables -t nat -F",
+            "cmd wifi set-softap-enabled false",
+            "echo 0 > /proc/sys/net/ipv4/ip_forward"
         )
         return executeRootCommandsBatch(commands)
     }
