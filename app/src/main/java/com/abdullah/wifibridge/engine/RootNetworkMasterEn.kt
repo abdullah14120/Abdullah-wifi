@@ -9,17 +9,24 @@ object RootNetworkMasterEngine {
     private const val TAG = "RootNetworkEngine"
 
     fun checkRootAccess(): Boolean {
+        var process: Process? = null
+        var os: DataOutputStream? = null
         return try {
-            val process = Runtime.getRuntime().exec("su")
-            val outputStream = DataOutputStream(process.outputStream)
-            outputStream.writeBytes("id\n")
-            outputStream.writeBytes("exit\n")
-            outputStream.flush()
+            process = Runtime.getRuntime().exec("su")
+            os = DataOutputStream(process.outputStream)
+            os.writeBytes("id\n")
+            os.writeBytes("exit\n")
+            os.flush()
             val exitCode = process.waitFor()
             exitCode == 0
         } catch (e: Exception) {
             Log.e(TAG, "خطأ في التحقق من الروت: ${e.message}")
             false
+        } finally {
+            try {
+                os?.close()
+                process?.destroy()
+            } catch (_: IOException) {}
         }
     }
 
@@ -88,8 +95,6 @@ object RootNetworkMasterEngine {
         } catch (e: Exception) {
             Log.e(TAG, "خطأ في تنفيذ حزمة أوامر الروت", e)
             false
-        } else { // تم تصحيح القوس المسبب للخطأ هنا
-            true
         } finally {
             try {
                 os?.close()
