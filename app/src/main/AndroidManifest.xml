@@ -4,7 +4,13 @@
     package="com.abdullah.wifibridge">
 
     <!-- ============================================================= -->
-    <!-- 1. أذونات الشبكة والإنترنت الأساسية                         -->
+    <!-- 1. أذونات الطاقة والمعالج (حل إشكالية SecurityException)     -->
+    <!-- ============================================================= -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- ============================================================= -->
+    <!-- 2. أذونات الشبكة والإنترنت الأساسية                         -->
     <!-- ============================================================= -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -13,15 +19,10 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
 
     <!-- ============================================================= -->
-    <!-- 2. أذونات الموقع الجغرافي (مطلوبة لـ LocalOnlyHotspot/Wi-Fi) -->
+    <!-- 3. أذونات الموقع الجغرافي والأجهزة المجاورة                  -->
     <!-- ============================================================= -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-
-    <!-- ============================================================= -->
-    <!-- 3. أذونات الأجهزة المجاورة (Android 12+ / API 31+)            -->
-    <!-- مخصص بمعامل neverForLocation لتفادي مشاكل واجهة Redmi/MIUI   -->
-    <!-- ============================================================= -->
     <uses-permission
         android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation"
@@ -31,36 +32,23 @@
     <!-- 4. أذونات خدمات الخلفية والإشعارات (Android 13+ & 14+)        -->
     <!-- ============================================================= -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    
-    <!-- تحديد نوع الخدمة الأمامية وفقاً لمتطلبات Android 14 (API 34) -->
     <uses-permission 
         android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" 
         tools:targetApi="upside_down_cake" />
-
-    <!-- إذن إرسال الإشعارات (Android 13+ / API 33) -->
     <uses-permission 
         android:name="android.permission.POST_NOTIFICATIONS" 
         tools:targetApi="tiramisu" />
 
-    <!-- إذن تجاوز تحسينات البطارية لضمان استمرار عمل سيرفر البروكسي -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-
-    <!-- ============================================================= -->
-    <!-- هيكل التطبيق والمكونات (Application Elements)                -->
-    <!-- ============================================================= -->
     <application
         android:allowBackup="true"
-        android:dataExtractionRules="@xml/data_extraction_rules"
-        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
+        android:label="Wi-Fi Bridge Engine"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.WiFiBridge"
+        android:theme="@style/Theme.Material3.DayNight.NoActionBar"
         android:usesCleartextTraffic="true"
         tools:targetApi="34">
 
-        <!-- الشاشة الرئيسية للتطبيق (MainActivity) -->
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
@@ -72,9 +60,7 @@
             </intent-filter>
         </activity>
 
-        <!-- ========================================================= -->
-        <!-- خدمة خادم البث والجسريات (Hotspot Foreground Service)      -->
-        <!-- ========================================================= -->
+        <!-- خدمة البث الجسري مع تحديد أنواع Foreground Service لـ Android 14 -->
         <service
             android:name=".server.HotspotService"
             android:enabled="true"
