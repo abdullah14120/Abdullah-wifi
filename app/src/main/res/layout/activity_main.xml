@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="24dp">
+    android:fillViewport="true"
+    android:padding="20dp"
+    tools:context=".ui.MainActivity">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -12,43 +16,107 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="إعدادات خادم البث الافتراضي"
-            android:textSize="20sp"
+            android:text="إعدادات خادم البث والجسر"
+            android:textSize="22sp"
             android:textStyle="bold"
+            android:textColor="?attr/colorPrimary"
             android:layout_marginBottom="16dp"/>
 
-        <EditText
-            android:id="@+id/etSubnetX"
+        <!-- قسم إعدادات الشبكة (SSID & Password) -->
+        <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Subnet (مثال: 10 للآي بي 192.168.10.X)"
-            android:inputType="number"
-            android:text="10"
-            android:layout_marginBottom="12dp"/>
+            android:hint="اسم شبكة البث (SSID)"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_marginBottom="12dp">
 
-        <EditText
-            android:id="@+id/etHostY"
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etSsid"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:text="Abdullah-WiFi-Bridge" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Host IP (مثال: 1 للآي بي 192.168.10.1)"
-            android:inputType="number"
-            android:text="1"
-            android:layout_marginBottom="12dp"/>
+            android:hint="كلمة مرور الشبكة"
+            app:passwordToggleEnabled="true"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_marginBottom="16dp">
 
-        <EditText
-            android:id="@+id/etGatewayY"
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etPassword"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="textPassword"
+                android:text="123456788" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- قسم عناوين IP والـ Gateway -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Gateway IP (مثال: 254 للـ 192.168.10.254)"
-            android:inputType="number"
-            android:text="254"
-            android:layout_marginBottom="24dp"/>
+            android:orientation="horizontal"
+            android:baselineAligned="false"
+            android:layout_marginBottom="12dp">
 
-        <Button
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Subnet (X)"
+                android:layout_marginEnd="6dp"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etSubnetX"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:text="10" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Host IP (Y)"
+                android:layout_marginStart="6dp"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etHostY"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="number"
+                    android:text="1" />
+            </com.google.android.material.textfield.TextInputLayout>
+        </LinearLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Gateway IP (الراوتر)"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_marginBottom="20dp">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etGatewayY"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="number"
+                android:text="254" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnToggleServer"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="بدء البث المخصص"
+            android:layout_height="56dp"
+            android:text="بدء البث المخصص وتوليد QR"
+            android:textSize="16sp"
+            app:cornerRadius="12dp"
             android:layout_marginBottom="16dp"/>
 
         <TextView
@@ -56,7 +124,58 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="البث متوقف"
-            android:textSize="16sp"/>
+            android:textSize="15sp"
+            android:gravity="center"
+            android:textColor="#757575"
+            android:layout_marginBottom="20dp"/>
+
+        <!-- بطاقة عرض رمز الـ QR الخاص بالعملاء -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardQrContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="6dp"
+            app:strokeWidth="1dp"
+            app:strokeColor="#E0E0E0"
+            android:layout_marginBottom="24dp"
+            tools:visibility="visible">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="امسح الرمز للاتصال الفوري بالشبكة"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="#212121"
+                    android:layout_marginBottom="12dp" />
+
+                <ImageView
+                    android:id="@+id/ivQrCode"
+                    android:layout_width="230dp"
+                    android:layout_height="230dp"
+                    android:background="@android:color/white"
+                    android:padding="8dp"
+                    android:contentDescription="WiFi Connection QR Code" />
+
+                <TextView
+                    android:id="@+id/tvQrSsidInfo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="SSID: Abdullah-WiFi-Bridge"
+                    android:textColor="#616161"
+                    android:textSize="13sp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
     </LinearLayout>
 </ScrollView>
