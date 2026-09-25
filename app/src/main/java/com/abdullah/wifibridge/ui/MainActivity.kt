@@ -1,13 +1,20 @@
 package com.abdullah.wifibridge.ui
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.abdullah.wifibridge.databinding.ActivityMainBinding
@@ -19,7 +26,24 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var isServerRunning = false
 
-    // مستلم تحديثات حالة البث والاسم الحقيقي للشبكة
+    // 1. مسجل الأذونات الحديث (Multiple Permissions Launcher)
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.entries.all { it.value }
+        if (allGranted) {
+            checkAndRequestBatteryOptimization()
+            startBridgeServerService()
+        } else {
+            Toast.makeText(
+                this,
+                "يلزم تقديم جميع الأذونات لتمكين بث الواي فاي وتوليد الشبكة!",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    // 2. مستلم تحديثات حالة البث والاسم الحقيقي للشبكة من HotspotService
     private val hotspotReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == HotspotService.ACTION_HOTSPOT_STATE) {
@@ -62,15 +86,80 @@ class MainActivity : AppCompatActivity() {
     private fun setupListeners() {
         binding.btnToggleServer.setOnClickListener {
             if (!isServerRunning) {
-                startBridgeServer()
+                checkPermissionsAndStart()
             } else {
                 stopBridgeServer()
             }
         }
     }
 
-    private fun startBridgeServer() {
-        val intent = Intent(this, HotspotService::class.java)
+    /**
+     * التحقق من الأذونات المطلوبة حسب إصدار النظام قبل بدء الخدمة
+     */
+    private fun checkPermissionsAndStart() {
+        val requiredPermissions = mutableListOf<String>()
+
+        // أذونات الموقع الجغرافي الأساسية
+        requiredPermissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        requiredPermissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+
+        // إذن الأجهزة المجاورة للواي فاي في أندرويد 12+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            requiredPermissions.add(Manifest.permission.NEARBY_WIFI_DEVICES)
+        }
+
+        // إذن الإشعارات لأندرويد 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requiredPermissions.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        val missingPermissions = requiredPermissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missingPermissions.isNotEmpty()) {
+            permissionLauncher.launch(missingPermissions.toTypedArray())
+        } else {
+            checkAndRequestBatteryOptimization()
+            startBridgeServerService()
+        }
+    }
+
+    /**
+     * طلب تجاهل تحسينات البطارية لضمان عدم إغلاق سيرفر البروكسي في الخلفية
+     */
+    @SuppressLint("BatteryLife")
+    private fun checkAndRequestBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val packageName = packageName
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(this, "يرجى تعطيل تحسين البطارية للتطبيق من الإعدادات", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    /**
+     * قراءة إعدادات الشبكة المخصصة وإرسالها للخدمة لبدء البث
+     */
+    private fun startBridgeServerService() {
+        val subnetX = binding.etSubnetX.text.toString().toIntOrNull() ?: 10
+        val hostY = binding.etHostY.text.toString().toIntOrNull() ?: 1
+        val gatewayY = binding.etGatewayY.text.toString().toIntOrNull() ?: 254
+
+        val intent = Intent(this, HotspotService::class.java).apply {
+            putExtra(HotspotService.EXTRA_SUBNET_X, subnetX)
+            putExtra(HotspotService.EXTRA_HOST_Y, hostY)
+            putExtra(HotspotService.EXTRA_GATEWAY_Y, gatewayY)
+        }
+
         ContextCompat.startForegroundService(this, intent)
         binding.tvStatus.text = "جاري تهيئة بث الشبكة وتوليد الكود..."
     }
@@ -83,11 +172,16 @@ class MainActivity : AppCompatActivity() {
         binding.etSsid.setText(ssid)
         binding.etPassword.setText(pass)
 
-        // توليد الـ QR Code بالبيانات الحقيقية للتأكد من نجاح الاتصال 100%
+        // قراءة قيم IP المخصصة المعروضة
+        val subnetX = binding.etSubnetX.text.toString().ifEmpty { "10" }
+        val hostY = binding.etHostY.text.toString().ifEmpty { "1" }
+        val serverIp = "192.168.$subnetX.$hostY"
+
+        // توليد الـ QR Code شاملاً اسم الشبكة، الباسورد، وعنوان السيرفر
         val qrBitmap = QRCodeGenerator.generateWifiQrCode(ssid, pass)
         if (qrBitmap != null) {
             binding.ivQrCode.setImageBitmap(qrBitmap)
-            binding.tvQrSsidInfo.text = "SSID: $ssid | Pass: $pass"
+            binding.tvQrSsidInfo.text = "SSID: $ssid\nServer IP: $serverIp | Proxy Port: 8080"
             binding.cardQrContainer.visibility = View.VISIBLE
         }
 
