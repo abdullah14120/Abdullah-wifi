@@ -5,7 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
-import android.os.Build
+.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.abdullah.wifibridge.R
@@ -25,25 +25,34 @@ class BridgeForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val notification = createNotification("جسر الروت الشفاف يعمل بكفاءة عالية وبدون قيود...")
+        val subnetX = intent?.getIntExtra("SUBNET_X", 50) ?: 50
+        val gatewayY = intent?.getIntExtra("GATEWAY_Y", 1) ?: 1
+
+        val notification = createNotification("البث يعمل على 192.168.$subnetX.$gatewayY وبدون قيود...")
         startForeground(NOTIFICATION_ID, notification)
 
-        // تشغيل المحرك تلقائياً باستخدام الكاشف الذكي وقواعد الـ NAT للروت
         Thread {
-            // استخدام الأسماء الصحيحة والدقيقة المطابقة لـ NetworkInterfaceScanner
-            val wan = NetworkInterfaceScanner.getActiveWanInterface() ?: "rmnet_data0"
-            val lan = NetworkInterfaceScanner.getHotspotInterface()
-
-            // تنفيذ أوامر الروت لتفعيل التوجيه والـ NAT
+            // 1. تفعيل IP Forwarding للنواة
             RootNetworkMasterEngine.enableIpForwarding()
-            RootNetworkMasterEngine.setupNatRules(wan, lan)
+
+            // 2. تفعيل نقطة اتصال افتراضية أو إجبار واجهة البث على الـ Subnet المخصص عبر أوامر الروت
+            // مثال: تعيين الـ IP المخصص لبطاقة الواي فاي المحلية (ap0 أو wlan0)
+            val hotspotInterface = NetworkInterfaceScanner.getHotspotInterface()
+            val customGatewayIp = "192.168.$subnetX.$gatewayY"
+            
+            // تطبيق الـ IP المخصص على واجهة البث بواسطة أداة ip address المدمجة في أندرويد (صلاحية روت)
+            RootNetworkMasterEngine.executeRootCommand("ip addr add $customGatewayIp/24 dev $hotspotInterface")
+
+            // 3. جلب الواجهة النشطة للإنترنت (Data أو Wi-Fi الأساسي) وتطبيق قواعد NAT
+            val wan = NetworkInterfaceScanner.getActiveWanInterface() ?: "rmnet_data0"
+            RootNetworkMasterEngine.setupNatRules(wan, hotspotInterface)
+
         }.start()
 
         return START_STICKY
     }
 
     override fun onDestroy() {
-        // تنظيف القواعد وإيقاف التوجيه وإلغاء الـ iptables عند إيقاف الخدمة نهائياً
         Thread {
             RootNetworkMasterEngine.flushAllRules()
         }.start()
@@ -58,9 +67,7 @@ class BridgeForegroundService : Service() {
                 CHANNEL_ID,
                 "WiFi Bridge Root Service Channel",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "قناة خدمة بث الشبكة عبر الروت"
-            }
+            )
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(serviceChannel)
         }
