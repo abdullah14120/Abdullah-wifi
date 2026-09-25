@@ -5,16 +5,22 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
-import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 
 class HotspotService : Service() {
 
     private lateinit var wifiManager: WifiManager
+    private var hotspotReservation: WifiManager.LocalOnlyHotspotReservation? = null
+
+    companion object {
+        const val ACTION_HOTSPOT_STATE = "com.abdullah.wifibridge.HOTSPOT_STATE"
+        const val EXTRA_SSID = "extra_ssid"
+        const val EXTRA_PASSWORD = "extra_password"
+        const val EXTRA_IS_RUNNING = "extra_is_running"
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -22,93 +28,73 @@ class HotspotService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val ssid = intent?.getStringExtra("SSID") ?: "Abdullah-WiFi-Bridge"
-        val password = intent?.getStringExtra("PASSWORD") ?: "12345678"
-
         startForegroundServiceNotification()
-        enableHotspotProgrammatically(ssid, password)
-
+        startSystemLocalHotspot()
         return START_STICKY
     }
 
-    /**
-     * تفعيل بث الـ Hotspot بالاسم وكلمة المرور المحددة حقيقياً
-     */
-    private fun enableHotspotProgrammatically(ssid: String, pass: String) {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // لأجهزة Android 8.0 و 8.1
-                val wifiConfig = WifiConfiguration().apply {
-                    SSID = ssid
-                    preSharedKey = pass
-                    allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK)
-                    allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.OPEN)
-                }
+    private fun startSystemLocalHotspot() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                wifiManager.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
+                    override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
+                        super.onStarted(reservation)
+                        hotspotReservation = reservation
+                        
+                        // استخراج اسم الشبكة وكلمة المرور الحقيقيين من النظام
+                        val config = reservation?.wifiConfiguration
+                        val actualSsid = config?.SSID ?: "Unknown"
+                        val actualPassword = config?.preSharedKey ?: ""
 
-                // استدعاء دالة النظام المخفية (Reflection) لتشغيل الـ Hotspot بالـ SSID المخصص
-                val setWifiApEnabledMethod = wifiManager.javaClass.getMethod(
-                    "setWifiApEnabled",
-                    WifiConfiguration::class.java,
-                    Boolean::class.javaPrimitiveType
-                )
-                setWifiApEnabledMethod.invoke(wifiManager, wifiConfig, true)
+                        // إرسال البيانات الحقيقية لـ MainActivity لتحديث الـ QR Code
+                        sendHotspotBroadcast(true, actualSsid, actualPassword)
+                    }
 
-            } else {
-                // للأجهزة الأقدم
-                val wifiConfig = WifiConfiguration().apply {
-                    SSID = ssid
-                    preSharedKey = pass
-                    allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK)
-                }
-                val method = wifiManager.javaClass.getMethod("setWifiApEnabled", WifiConfiguration::class.java, Boolean::class.javaPrimitiveType)
-                method.invoke(wifiManager, wifiConfig, true)
+                    override fun onFailed(reason: Int) {
+                        super.onFailed(reason)
+                        sendHotspotBroadcast(false, "", "")
+                    }
+                }, null)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                sendHotspotBroadcast(false, "", "")
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            // إذا فشل الـ Reflection في الإصدارات الحديثة بسبب قيود النظام، يتم استخدام LocalOnlyHotspot
-            startLocalOnlyHotspot()
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
-    private fun startLocalOnlyHotspot() {
-        wifiManager.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
-            override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
-                super.onStarted(reservation)
-                val config = reservation?.wifiConfiguration
-                // هنا نحصل على الـ SSID الحقيقي والكلمة التي ينشئها النظام تلقائياً
-                val actualSsid = config?.SSID
-                val actualPassword = config?.preSharedKey
-                
-                // إرسال البيانات الحقيقية للواجهة لتحدث الباركود
-                val broadcastIntent = Intent("ACTION_HOTSPOT_STARTED").apply {
-                    putExtra("ACTUAL_SSID", actualSsid)
-                    putExtra("ACTUAL_PASSWORD", actualPassword)
-                }
-                sendBroadcast(broadcastIntent)
-            }
-
-            override fun onFailed(reason: Int) {
-                super.onFailed(reason)
-            }
-        }, null)
+    private fun sendHotspotBroadcast(isRunning: Boolean, ssid: String, pass: String) {
+        val intent = Intent(ACTION_HOTSPOT_STATE).apply {
+            putExtra(EXTRA_IS_RUNNING, isRunning)
+            putExtra(EXTRA_SSID, ssid)
+            putExtra(EXTRA_PASSWORD, pass)
+        }
+        sendBroadcast(intent)
     }
 
     private fun startForegroundServiceNotification() {
         val channelId = "wifi_bridge_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "WiFi Bridge Service", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(channelId, "WiFi Bridge", NotificationManager.IMPORTANCE_LOW)
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
         }
 
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("خادم خيارات البث يعمل")
-            .setContentText("جاري بث شبكة الواي فاي والجسر...")
+            .setContentTitle("خادم نقطة البث الافتراضية")
+            .setContentText("جاري إدارة الشبكة والتحويل...")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .build()
 
         startForeground(1, notification)
+    }
+
+    override fun onDestroy() {
+        // إغلاق البث عند إيقاف الخدمة
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            hotspotReservation?.close()
+        }
+        sendHotspotBroadcast(false, "", "")
+        super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
