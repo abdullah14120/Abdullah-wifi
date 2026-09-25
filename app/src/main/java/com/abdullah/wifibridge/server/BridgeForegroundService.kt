@@ -76,8 +76,8 @@ class BridgeForegroundService : android.app.Service() {
                 // الخطوة 4: تفعيل الـ IP Forwarding في النواة
                 RootNetworkMasterEngine.enableIpForwarding()
 
-                // الخطوة 5: تشغيل نقطة الاتصال (SoftAP) عبر النظام بالاسم وكلمة المرور
-                RootNetworkMasterEngine.configureAndStartSoftAp(ssidName, ssidPassword)
+                // الخطوة 5: تشغيل نقطة الاتصال (SoftAP) إجبارياً وتجاوز عشوائية النظام بالاسم وكلمة المرور
+                RootNetworkMasterEngine.forceConfigureAndStartSoftAp(ssidName, ssidPassword)
 
                 // الخطوة 6: إعادة فحص واستقرار واجهة البث بعد تفعيل الـ SoftAP الفعلي
                 var hotspotInterface: String? = null
@@ -99,6 +99,10 @@ class BridgeForegroundService : android.app.Service() {
                 } else {
                     Log.w(TAG, "Hotspot interface detection timed out. Maintaining fallback: $activeHotspotInterface")
                 }
+
+                // الخطوة 6.1: التحقق الفوري الاختياري من نجاح الفرض عبر الـ Logcat
+                val configVerificationResult = RootNetworkMasterEngine.verifyActiveSoftApConfig()
+                Log.i(TAG, "SoftAP Active Config Verification:\n$configVerificationResult")
 
                 // الخطوة 7: تطبيق بصمة الـ MAC العشوائية (MAC Spoofing) للطبقة الثانية (Layer 2)
                 Log.i(TAG, "Applying random MAC spoofing to interface: $activeHotspotInterface")
