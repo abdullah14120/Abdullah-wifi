@@ -31,8 +31,6 @@ class BridgeForegroundService : Service() {
         const val EXTRA_ACTIVE_PASSWORD = "ACTIVE_PASSWORD"
     }
 
-    private var hotspotInterface = "p2p-wlan0-0"  // واجهة الـ Wi-Fi Direct الافتراضية للبث
-
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
@@ -66,10 +64,7 @@ class BridgeForegroundService : Service() {
                 // 1. تفعيل صلاحيات الـ IP Forwarding ونواة اللينكس
                 RootNetworkMasterEngine.enableIpForwarding()
 
-                // 2. تنظيف البيئة مسبقاً لمنع أي تعارض في الـ iptables
-                RootNetworkMasterEngine.performDeepEnvironmentSanitization(hotspotInterface)
-
-                // 3. إنشاء شبكة Wi-Fi Direct (P2P Group Owner)
+                // 2. إنشاء شبكة Wi-Fi Direct (P2P Group Owner)
                 WifiDirectBridgeEngine.createWifiP2pGroup(applicationContext) { success, generatedSsid, generatedPassword ->
                     if (success) {
                         val finalSsid = if (!customSsid.isNullOrEmpty()) customSsid else (generatedSsid ?: "Android_Bridge")
@@ -79,34 +74,39 @@ class BridgeForegroundService : Service() {
                         
                         updateNotification("البث نشط: $finalSsid | كلمة المرور: $finalPass")
 
+                        // 3. 🔍 الاستشعار الديناميكي الذكي لواجهة البث الفعلية التي أنشأتها النواة
+                        val actualHotspotInterface = detectActualP2pInterface()
+                        Log.i(TAG, "Detected Active P2P/Hotspot Interface: $actualHotspotInterface")
+
+                        // 4. تنظيف البيئة مسبقاً وتطبيق تزييف الـ MAC Address للواجهة المكتشفة
+                        RootNetworkMasterEngine.performDeepEnvironmentSanitization(actualHotspotInterface)
+                        RootNetworkMasterEngine.randomizeHotspotMac(actualHotspotInterface)
+
+                        // 5. 🌐 الاكتشاف التلقائي والديناميكي لواجهة الخروج (الواي فاي الأساسي wlan0 أو بيانات الجوال)
+                        val activeWanInterface = RootNetworkMasterEngine.detectActiveWanInterface()
+                        Log.i(TAG, "Detected Active WAN Interface (Wi-Fi STA): $activeWanInterface")
+
+                        // 6. تطبيق إعدادات الـ Subnet المخصص وقواعد الـ NAT للربط وتوجيه الإنترنت بفاعلية تامة
+                        val natSuccess = RootNetworkMasterEngine.setupCustomSubnetAndNat(
+                            subnetX, gatewayY, activeWanInterface, actualHotspotInterface
+                        )
+
+                        if (natSuccess) {
+                            Log.i(TAG, "Custom Subnet & NAT Routing applied successfully via $activeWanInterface -> $actualHotspotInterface!")
+                        } else {
+                            Log.w(TAG, "Failed to apply NAT routing rules, retrying with fallback...")
+                        }
+
+                        // 7. فرض توجيه الـ DNS قسرياً (DNS Hijacking) على الواجهة الفعلية
+                        RootNetworkMasterEngine.applyForcedDnsRedirection(actualHotspotInterface, customDns)
+                        Log.i(TAG, "Forced DNS Redirection applied to: $customDns on interface $actualHotspotInterface")
+
                         sendBridgeStatusBroadcast(
                             isActive = true,
                             message = "تم تشغيل الجسر والبث بنجاح ✔️",
                             ssid = finalSsid,
                             password = finalPass
                         )
-
-                        // 4. تطبيق تزييف الـ MAC Address لواجهة البث لزيادة الأمان
-                        RootNetworkMasterEngine.randomizeHotspotMac(hotspotInterface)
-
-                        // 5. 🌐 الاكتشاف التلقائي والديناميكي لواجهة الخروج (الواي فاي الأساسي wlan0)
-                        val activeWanInterface = RootNetworkMasterEngine.detectActiveWanInterface()
-                        Log.i(TAG, "Detected Active WAN Interface (Wi-Fi STA): $activeWanInterface")
-
-                        // 6. تطبيق إعدادات الـ Subnet المخصص وقواعد الـ NAT للربط وتوجيه الإنترنت
-                        val natSuccess = RootNetworkMasterEngine.setupCustomSubnetAndNat(
-                            subnetX, gatewayY, activeWanInterface, hotspotInterface
-                        )
-
-                        if (natSuccess) {
-                            Log.i(TAG, "Custom Subnet & NAT Routing applied successfully via $activeWanInterface!")
-                        } else {
-                            Log.w(TAG, "Failed to apply NAT routing rules, retrying with fallback...")
-                        }
-
-                        // 7. فرض توجيه الـ DNS قسرياً (DNS Hijacking)
-                        RootNetworkMasterEngine.applyForcedDnsRedirection(hotspotInterface, customDns)
-                        Log.i(TAG, "Forced DNS Redirection applied to: $customDns")
 
                     } else {
                         Log.e(TAG, "Failed to create Wi-Fi Direct Group.")
@@ -133,6 +133,27 @@ class BridgeForegroundService : Service() {
         }.start()
 
         return START_STICKY
+    }
+
+    /**
+     * دالة استشعار ذكية تبحث في كروت الشبكة النشطة عن أي واجهة تبدأ بـ p2p أو wlan وتعود بها ديناميكياً
+     */
+    private fun detectActualP2pInterface(): String {
+        try {
+            val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            // البحث عن الواجهة النشطة الخاصة بالـ Wi-Fi Direct
+            for ('i' in interfaces) {
+                val name = i.name
+                if (name.startsWith("p2p") || name.startsWith("swlan") || (name.startsWith("wlan") && name != "wlan0")) {
+                    Log.i(TAG, "Found matching P2P/Hotspot interface dynamically: $name")
+                    return name
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error detecting P2P interface dynamically, falling back to default", e)
+        }
+        // قيمة افتراضية احتياطية في حال فشل الاستشعار
+        return "p2p-wlan0-0"
     }
 
     override fun onDestroy() {
