@@ -1,145 +1,99 @@
 package com.abdullah.wifibridge.server
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.abdullah.wifibridge.R
-import com.abdullah.wifibridge.engine.NetworkInterfaceScanner
 import com.abdullah.wifibridge.engine.RootNetworkMasterEngine
+import com.abdullah.wifibridge.engine.WifiDirectBridgeEngine
 
-class BridgeForegroundService : android.app.Service() {
+class BridgeForegroundService : Service() {
 
     companion object {
-        const val TAG = "BridgeForegroundService"
-        const val CHANNEL_ID = "WifiBridgeRootChannel"
-        const val NOTIFICATION_ID = 1001
+        private const val TAG = "BridgeService"
+        private const val CHANNEL_ID = "wifi_bridge_service_channel"
+        private const val NOTIFICATION_ID = 1337
     }
 
-    // نحتفظ بمرجع لواجهة البث النشطة لضمان تنظيفها بدقة عند التوقف (onDestroy)
-    @Volatile
-    private var activeHotspotInterface: String = "ap0"
+    private var outboundInterface = "rmnet_data0" // واجهة بيانات الجوال الافتراضية للخروج (WAN)
+    private var hotspotInterface = "p2p-wlan0-0"  // واجهة الـ Wi-Fi Direct الافتراضية
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
     }
 
+    @SuppressLint("ForegroundServiceType")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // قراءة المتغيرات أو تطبيق التدوير العشوائي (Dynamic Subnet Rotation) في حال لم يتم تحديدها
-        val useDynamicSubnet = intent?.getBooleanExtra("USE_DYNAMIC_SUBNET", true) ?: true
-        
-        val subnetX: Int
-        val gatewayY: Int
-        
-        if (useDynamicSubnet) {
-            val dynamicPair = RootNetworkMasterEngine.generateDynamicSubnet()
-            subnetX = dynamicPair.first
-            gatewayY = dynamicPair.second
-            Log.i(TAG, "Dynamic Subnet Rotation Applied -> Subnet: 192.168.$subnetX.$gatewayY")
+        val subnetX = intent?.getIntExtra("SUBNET_X", 50) ?: 50
+        val gatewayY = intent?.getIntExtra("GATEWAY_Y", 1) ?: 1
+        val customDns = intent?.getStringExtra("DNS_SERVER") ?: "1.1.1.1"
+
+        // بدء الخدمة في الواجهة الأمامية لمنع النظام من قتلها
+        val notification = buildNotification("جاري تهيئة بيئة الجسر وتفعيل Wi-Fi Direct...")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            } else {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            }
+            startForeground(NOTIFICATION_ID, notification, type)
         } else {
-            subnetX = intent?.getIntExtra("SUBNET_X", 50) ?: 50
-            gatewayY = intent?.getIntExtra("GATEWAY_Y", 1) ?: 1
+            startForeground(NOTIFICATION_ID, notification)
         }
 
-        val ssidName = intent?.getStringExtra("SSID_NAME") ?: "Abdullah_Bridge_Root"
-        val ssidPassword = intent?.getStringExtra("SSID_PASSWORD") ?: "12345678"
-        val dnsServer = intent?.getStringExtra("DNS_SERVER") ?: "1.1.1.1"
-
-        // بدء الخدمة الأمامية فوراً بإشعار أولي للحفاظ على استقرار الـ Foreground Lifecycle
-        val initialNotification = createNotification("جاري تهيئة بيئة البث وعزل الشبكة...")
-        startForeground(NOTIFICATION_ID, initialNotification)
-
+        // تنفيذ دورة التشغيل المتكاملة عبر مسار مستقل (Background Thread)
         Thread {
             try {
-                Log.i(TAG, "=== Starting Wi-Bridge Full Pipeline with Deep Sanitization ===")
+                Log.i(TAG, "=== Starting Wi-Fi Direct Bridge Pipeline ===")
 
-                // الخطوة 1: التحقق الحازم من صلاحيات الروت
-                if (!RootNetworkMasterEngine.checkRootAccess()) {
-                    Log.e(TAG, "Critical Error: Root access is denied or unavailable!")
-                    stopSelf()
-                    return@Thread
-                }
-
-                // الخطوة 2: الانتظار الذكي (Polling) المسبق لتحديد الواجهة المتوقعة أو البدء بـ ap0 لتنفيذ التنظيف العميق عليها
-                val preliminaryInterface = NetworkInterfaceScanner.getHotspotInterface() ?: "ap0"
-                activeHotspotInterface = preliminaryInterface
-
-                // الخطوة 3: تنفيذ بروتوكول التنظيف العميق (Deep Environment Sanitization) لتفريغ جداول النواة القديمة
-                Log.i(TAG, "Executing Deep Sanitization on interface: $activeHotspotInterface")
-                RootNetworkMasterEngine.performDeepEnvironmentSanitization(activeHotspotInterface)
-
-                // الخطوة 4: تفعيل الـ IP Forwarding في النواة
+                // 1. تفعيل صلاحيات الـ IP Forwarding ونواة اللينكس
                 RootNetworkMasterEngine.enableIpForwarding()
 
-                // الخطوة 5: تشغيل نقطة الاتصال (SoftAP) عبر الآلية الذكية الشاملة مع الحلول البديلة لضمان ظهور الشبكة
-                val hotspotStarted = RootNetworkMasterEngine.startHotspotWithManager(applicationContext, ssidName, ssidPassword)
-                if (!hotspotStarted) {
-                    Log.w(TAG, "Warning: Hotspot start manager returned false, but pipeline will attempt interface stabilization.")
-                }
+                // 2. تنظيف البيئة مسبقاً لإزالة أي تعارض سابق في قواعد الـ iptables
+                RootNetworkMasterEngine.performDeepEnvironmentSanitization(hotspotInterface)
 
-                // الخطوة 6: إعادة فحص واستقرار واجهة البث بعد تفعيل الـ SoftAP الفعلي
-                var hotspotInterface: String? = null
-                var attempts = 0
-                val maxAttempts = 15 // محاولة لمدة تصل إلى 7.5 ثانية كحد أقصى
+                // 3. إنشاء شبكة Wi-Fi Direct (P2P Group Owner) المماثلة للتطبيق الناجح
+                WifiDirectBridgeEngine.createWifiP2pGroup(applicationContext) { success, ssid, password ->
+                    if (success) {
+                        Log.i(TAG, "Wi-Fi Direct Group Active! SSID: $ssid | Password: $password")
+                        
+                        // تحديث الإشعار باسم الشبكة المنشأة
+                        updateNotification("البث نشط: $ssid | كلمة المرور: $password")
 
-                while (attempts < maxAttempts) {
-                    hotspotInterface = NetworkInterfaceScanner.getHotspotInterface()
-                    if (!hotspotInterface.isNullOrEmpty()) {
-                        Log.i(TAG, "Hotspot interface successfully stabilized: $hotspotInterface on attempt ${attempts + 1}")
-                        break
+                        // 4. تطبيق تزييف الـ MAC Address لحماية الخصوصية على الواجهة النشطة
+                        RootNetworkMasterEngine.randomizeHotspotMac(hotspotInterface)
+
+                        // 5. تطبيق إعدادات الـ Subnet المخصص وقواعد الـ NAT للربط بالإنترنت (WAN)
+                        val natSuccess = RootNetworkMasterEngine.setupCustomSubnetAndNat(
+                            subnetX, gatewayY, outboundInterface, hotspotInterface
+                        )
+
+                        if (natSuccess) {
+                            Log.i(TAG, "Custom Subnet & NAT Routing applied successfully!")
+                        } else {
+                            Log.w(TAG, "Failed to apply NAT routing rules, retrying with fallback...")
+                        }
+
+                        // 6. فرض توجيه الـ DNS قسرياً (DNS Hijacking) للسرعة والأمان
+                        RootNetworkMasterEngine.applyForcedDnsRedirection(hotspotInterface, customDns)
+                        Log.i(TAG, "Forced DNS Redirection applied to: $customDns")
+
+                    } else {
+                        Log.e(TAG, "Failed to create Wi-Fi Direct Group.")
+                        updateNotification("فشل إنشاء شبكة البث عبر الـ P2P!")
                     }
-                    Thread.sleep(500)
-                    attempts++
                 }
-
-                if (!hotspotInterface.isNullOrEmpty()) {
-                    activeHotspotInterface = hotspotInterface
-                } else {
-                    Log.w(TAG, "Hotspot interface detection timed out. Maintaining fallback: $activeHotspotInterface")
-                }
-
-                // الخطوة 6.1: التحقق الفوري الاختياري من نجاح الفرض عبر الـ Logcat
-                val configVerificationResult = RootNetworkMasterEngine.verifyActiveSoftApConfig()
-                Log.i(TAG, "SoftAP Active Config Verification:\n$configVerificationResult")
-
-                // الخطوة 7: تطبيق بصمة الـ MAC العشوائية (MAC Spoofing) للطبقة الثانية (Layer 2)
-                Log.i(TAG, "Applying random MAC spoofing to interface: $activeHotspotInterface")
-                RootNetworkMasterEngine.randomizeHotspotMac(activeHotspotInterface)
-
-                // الخطوة 8: جلب واجهة الخروج للإنترنت (WAN Interface) ديناميكياً
-                val wanInterface = NetworkInterfaceScanner.getActiveWanInterface() ?: "rmnet_data0"
-                Log.i(TAG, "Outbound WAN interface resolved to: $wanInterface")
-
-                // الخطوة 9: رفع وتطبيق الـ Subnet المخصص (أو الديناميكي) وإعداد قواعد الـ NAT والجدار الناري
-                val subnetSuccess = RootNetworkMasterEngine.setupCustomSubnetAndNat(
-                    subnetX, gatewayY, wanInterface, activeHotspotInterface
-                )
-                if (!subnetSuccess) {
-                    Log.e(TAG, "Failed to setup custom subnet and NAT forwarding rules!")
-                }
-
-                // الخطوة 10: تطبيق وحقن قواعد توجيه واعتراض الـ DNS قسرياً (DNS Hijacking) لمنع تسريب الطلبات
-                val dnsSuccess = RootNetworkMasterEngine.applyForcedDnsRedirection(
-                    activeHotspotInterface, dnsServer
-                )
-                if (dnsSuccess) {
-                    Log.i(TAG, "Forced DNS redirection successfully locked to $dnsServer")
-                } else {
-                    Log.e(TAG, "Failed to apply forced DNS redirection rules!")
-                }
-
-                // تحديث الإشعار النهائي ليدل على حالة العمل النشطة مع تفاصيل الشبكة الحالية
-                updateNotification("بث ($ssidName) | 192.168.$subnetX.$gatewayY | DNS: $dnsServer")
-                Log.i(TAG, "=== Wi-Bridge Pipeline Successfully Established & Secured ===")
 
             } catch (e: Exception) {
-                Log.e(TAG, "Critical exception in BridgeForegroundService execution pipeline", e)
-                stopSelf()
+                Log.e(TAG, "Critical error during bridge initialization pipeline", e)
             }
         }.start()
 
@@ -147,51 +101,43 @@ class BridgeForegroundService : android.app.Service() {
     }
 
     override fun onDestroy() {
-        // تنفيذ دورة التنظيف الشاملة وإزالة كافة قواعد الـ iptables، تفريغ الـ ARP، وإيقاف الـ AP عند التوقف
-        Thread {
-            try {
-                Log.i(TAG, "Initiating Clean Shutdown & Environment Sanitization...")
-                // تشغيل التنظيف العميق للواجهة النشطة قبل الإغلاق التام
-                RootNetworkMasterEngine.performDeepEnvironmentSanitization(activeHotspotInterface)
-                // إغلاق النظام نهائياً
-                RootNetworkMasterEngine.flushAllRules()
-                Log.i(TAG, "Bridge service successfully stopped and environment sanitized.")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error during service cleanup and environment sanitization", e)
-            }
-        }.start()
         super.onDestroy()
+        Log.i(TAG, "Stopping Bridge Service and cleaning up network environment...")
+        
+        // تنظيف شامل وإيقاف مجموعة الـ P2P وقواعد الحماية عند إغلاق التطبيق
+        Thread {
+            WifiDirectBridgeEngine.removeWifiP2pGroup(applicationContext)
+            RootNetworkMasterEngine.flushAllRules()
+        }.start()
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val serviceChannel = NotificationChannel(
-                CHANNEL_ID,
-                "WiFi Bridge Root Service Channel",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "قناة مخصصة لخدمة جسر شبكة الواي فاي ذات صلاحيات الروت مع العزل التام"
-            }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(serviceChannel)
-        }
-    }
-
-    private fun createNotification(message: String): Notification {
+    private fun buildNotification(text: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("تطبيق عبدالله للشبكات (حماية متقدمة - روت)")
-            .setContentText(message)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentTitle("Wi-Fi Bridge Engine (Root)")
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 
-    private fun updateNotification(message: String) {
-        val notification = createNotification(message)
+    private fun updateNotification(text: String) {
+        val notification = buildNotification(text)
         val manager = getSystemService(NotificationManager::class.java)
         manager?.notify(NOTIFICATION_ID, notification)
     }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Wi-Fi Bridge Engine Service Channel",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager?.createNotificationChannel(channel)
+        }
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
 }
