@@ -1,6 +1,12 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- الثيم الرئيسي متوافق تماماً مع Material 3 وعناصر المادتريال -->
     <style name="Theme.WiFiBridge" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your theme colors here -->
+        <!-- الألوان الأساسية والمتغيرات التابعة للمادة -->
+        <item name="colorPrimary">@color/purple_500</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorPrimaryVariant" tools:targetApi="l">@color/purple_700</item>
+        <item name="colorSecondary">@color/teal_200</item>
+        <!-- منع الانهيار عبر ربط النمط الأساسي لمكونات الإدخال -->
+        <item name="textInputStyle">@Widget.MaterialComponents.TextInputLayout.OutlinedBox</item>
     </style>
 </resources>
