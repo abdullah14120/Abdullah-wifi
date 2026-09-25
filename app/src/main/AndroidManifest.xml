@@ -1,24 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.abdullah.wifibridge">
 
-    <!-- أذونات شبكة الواي فاي والبث -->
+    <!-- أذونات شبكة الواي فاي والبث والإنترنت -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     
-    <!-- أذونات الموقع الجغرافي (مطلوبة للواي فاي ديركت في أندرويد) -->
+    <!-- أذونات الموقع الجغرافي والأجهزة المجاورة (مطلوبة للواي فاي في أندرويد 12+) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
-        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission 
+        android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
 
-    <!-- أذونات الخدمات في الخلفية والمنع من النوم -->
+    <!-- أذونات الخدمات في الخلفية وإشعارات أندرويد 13+ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- منع الجهاز من النوم وإبقاء اتصال الشبكة حياً -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:allowBackup="true"
@@ -26,18 +33,21 @@
         android:label="Wi-Fi Bridge Engine"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Material3.DayNight.NoActionBar">
+        android:theme="@style/Theme.Material3.DayNight.NoActionBar"
+        tools:targetApi="34">
 
+        <!-- النشاط الرئيسي -->
         <activity
             android:name=".ui.MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- خدمة البث الافتراضية في الخلفية -->
+        <!-- خدمة البث الافتراضية في الخلفية مع تحديد نوع الخدمة الصريح لأندرويد 14 -->
         <service
             android:name=".server.HotspotService"
             android:enabled="true"
