@@ -14,22 +14,35 @@ import java.net.InetAddress
 class StaticWifiManager(private val context: Context) {
 
     /**
-     * إنشاء إعدادات Static IP متوافقة مع Android 10+ (API 29+)
+     * إنشاء إعدادات Static IP بطريقة آمنة تتوافق مع قيود Kotlin Compiler و Android SDK
      */
     @RequiresApi(Build.VERSION_CODES.S)
     fun createStaticIpConfiguration(customIp: String, gatewayIp: String): StaticIpConfiguration {
-        val ipInet = InetAddress.getByName(customIp)
         val gatewayInet = InetAddress.getByName(gatewayIp)
+        
+        //  إنشاء LinkAddress بشكل مضاعف الأمان لتفادي أخطاء Access/Constructor restricted
+        val linkAddress = createLinkAddressSafe(customIp, 24)
 
-        //  إنشاء LinkAddress بشكل صحيح بتمرير InetAddress وطول الـ Prefix (مثلاً 24 لـ Subnet Mask 255.255.255.0)
-        val linkAddress = LinkAddress(ipInet, 24)
-
-        // بناء StaticIpConfiguration باستخدام الـ Builder المعتمد بدلاً من الاستدعاء المباشر
         return StaticIpConfiguration.Builder()
             .setIpAddress(linkAddress)
             .setGateway(gatewayInet)
             .setDnsServers(listOf(gatewayInet, InetAddress.getByName("8.8.8.8")))
             .build()
+    }
+
+    /**
+     * دالة مساعدة لإنشاء LinkAddress بشكل متوافق مع كافة المستويات دون التعارض مع القيود
+     */
+    private fun createLinkAddressSafe(ipAddress: String, prefixLength: Int): LinkAddress {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // الاستدعاء المباشر عن طريق CIDR Notation القياسي (مثال: "192.168.10.1/24")
+            LinkAddress("$ipAddress/$prefixLength")
+        } else {
+            // للأجهزة القديمة باستخدام InetAddress
+            val inetAddress = InetAddress.getByName(ipAddress)
+            val constructor = LinkAddress::class.java.getConstructor(InetAddress::class.java, Int::class.javaPrimitiveType)
+            constructor.newInstance(inetAddress, prefixLength)
+        }
     }
 
     /**
@@ -51,7 +64,6 @@ class StaticWifiManager(private val context: Context) {
 
         connectivityManager.requestNetwork(request, object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                // ربط التطبيق بالشبكة الحالية لتمرير البيانات عبرها
                 connectivityManager.bindProcessToNetwork(network)
             }
         })
