@@ -3,8 +3,10 @@ package com.abdullah.wifibridge.engine
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.util.Log
+import java.io.BufferedReader
 import java.io.DataOutputStream
 import java.io.IOException
+import java.io.InputStreamReader
 import java.util.Random
 
 object RootNetworkMasterEngine {
@@ -227,19 +229,50 @@ object RootNetworkMasterEngine {
     }
 
     /**
+     * 🌐 اكتشاف واجهة الخروج النشطة (Active WAN Interface) ديناميكياً لتجنب الاعتماد على rmnet_data0 فقط
+     */
+    fun detectActiveWanInterface(): String {
+        var process: Process? = null
+        try {
+            process = Runtime.getRuntime().exec(arrayOf("su", "-c", "ip route show | grep default"))
+            val reader = BufferedReader(InputStreamReader(process.inputStream))
+            val line = reader.readLine() ?: ""
+            process.waitFor()
+            
+            // مثال على السطر الناتج: default via 10.0.2.2 dev wlan0 table 0
+            if (line.isNotEmpty()) {
+                val parts = line.split(" ")
+                for (i in 0 until parts.size) {
+                    if (parts[i] == "dev" && i + 1 < parts.size) {
+                        val detectedInterface = parts[i + 1]
+                        Log.i(TAG, "Successfully detected active WAN interface: $detectedInterface")
+                        return detectedInterface
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to detect active WAN interface dynamically, falling back to rmnet_data0", e)
+        }
+        return "rmnet_data0" // القيمة الافتراضية الاحتياطية
+    }
+
+    /**
      * إعداد Subnet مخصص ديناميكي وتفعيل قواعد الـ NAT للتوجيه والخروج (WAN)
      */
     fun setupCustomSubnetAndNat(subnetX: Int, gatewayY: Int, outboundInterface: String, hotspotInterface: String): Boolean {
+        // التحقق الذكي واكتشاف الواجهة إذا كانت فارغة أو افتراضية
+        val activeWan = if (outboundInterface.isBlank()) detectActiveWanInterface() else outboundInterface
         val customGatewayIp = "192.168.$subnetX.$gatewayY"
+        
         val commands = listOf(
             "iptables -F",
             "iptables -t nat -F",
             "ip addr flush dev $hotspotInterface",
             "ip addr add $customGatewayIp/24 dev $hotspotInterface",
             "ip link set $hotspotInterface up",
-            "iptables -A FORWARD -i $hotspotInterface -o $outboundInterface -j ACCEPT",
-            "iptables -A FORWARD -i $outboundInterface -o $hotspotInterface -m state --state RELATED,ESTABLISHED -j ACCEPT",
-            "iptables -t nat -A POSTROUTING -o $outboundInterface -j MASQUERADE"
+            "iptables -A FORWARD -i $hotspotInterface -o $activeWan -j ACCEPT",
+            "iptables -A FORWARD -i $activeWan -o $hotspotInterface -m state --state RELATED,ESTABLISHED -j ACCEPT",
+            "iptables -t nat -A POSTROUTING -o $activeWan -j MASQUERADE"
         )
         return executeRootCommandsBatch(commands)
     }
