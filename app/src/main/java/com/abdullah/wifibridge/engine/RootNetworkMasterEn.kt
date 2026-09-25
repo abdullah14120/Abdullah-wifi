@@ -64,13 +64,7 @@ object RootNetworkMasterEngine {
             "echo 0 > /proc/sys/net/ipv4/ip_forward"
         )
 
-        val success = executeRootCommandsBatch(sanitizationCommands)
-        if (success) {
-            Log.i(TAG, "=== Deep Environment Sanitization Completed Successfully ===")
-        } else {
-            Log.w(TAG, "Some commands during deep sanitization encountered non-zero exit codes.")
-        }
-        return success
+        return executeRootCommandsBatch(sanitizationCommands)
     }
 
     /**
@@ -93,23 +87,17 @@ object RootNetworkMasterEngine {
             "cmd wifi set-softap-configuration ssid \"$ssid\" passphrase \"$password\" security WPA2_PSK",
             "cmd wifi set-softap-enabled true"
         )
-        val success = executeRootCommandsBatch(commands)
-        if (success) {
-            Log.i(TAG, "SoftAP enforcement commands executed successfully.")
-        } else {
-            Log.w(TAG, "Failed to execute complete SoftAP enforcement batch.")
-        }
-        return success
+        return executeRootCommandsBatch(commands)
     }
 
     /**
-     * 🧠 الدالة الشاملة المتقدمة: تشغيل الهوتسبت مع استخدام آليات بديلة وتأكيد إرجاع القيمة (Boolean)
+     * 🧠 الدالة الشاملة المتقدمة: تشغيل الهوتسبت مع استخدام آليات بديلة
      */
     fun startHotspotWithManager(context: Context, ssid: String, password: String): Boolean {
-        return try {
+        try {
             Log.i(TAG, "Starting hotspot via primary hard enforcement...")
             if (forceConfigureAndStartSoftAp(ssid, password)) {
-                return@try true
+                return true
             }
 
             Log.w(TAG, "Primary method failed. Executing advanced recovery & fallback mechanisms...")
@@ -128,7 +116,7 @@ object RootNetworkMasterEngine {
             val fallbackSuccess = executeRootCommandsBatch(fallbackCommands)
             if (fallbackSuccess) {
                 Log.i(TAG, "Fallback hotspot activation succeeded.")
-                return@try true
+                return true
             }
 
             val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
@@ -137,10 +125,10 @@ object RootNetworkMasterEngine {
                 it.isWifiEnabled = false
             }
 
-            false
+            return false
         } catch (e: Exception) {
             Log.e(TAG, "Error in startHotspotWithManager execution", e)
-            false
+            return false
         }
     }
 
@@ -189,10 +177,10 @@ object RootNetworkMasterEngine {
             
             val output = process.inputStream.bufferedReader().use { it.readText() }
             process.waitFor()
-            return output
+            output
         } catch (e: Exception) {
             Log.e(TAG, "Error verifying active softap config", e)
-            return null
+            null
         } finally {
             try {
                 os?.close()
@@ -284,6 +272,9 @@ object RootNetworkMasterEngine {
         return executeRootCommandsBatch(commands)
     }
 
+    /**
+     * تنفيذ أمر روت منفرد
+     */
     private fun executeRootCommand(command: String): Boolean {
         var process: Process? = null
         var os: DataOutputStream? = null
@@ -293,7 +284,7 @@ object RootNetworkMasterEngine {
             os.writeBytes("$command\n")
             os.writeBytes("exit\n")
             os.flush()
-            return process.waitFor() == 0
+            process.waitFor() == 0
         } catch (e: Exception) {
             Log.e(TAG, "Failed to execute root command: $command", e)
             false
@@ -305,6 +296,9 @@ object RootNetworkMasterEngine {
         }
     }
 
+    /**
+     * تنفيذ مجموعة أوامر روت بشكل متسلسل وبطريقة دفعة واحدة (Batch)
+     */
     private fun executeRootCommandsBatch(commands: List<String>): Boolean {
         var process: Process? = null
         var os: DataOutputStream? = null
@@ -316,7 +310,7 @@ object RootNetworkMasterEngine {
             }
             os.writeBytes("exit\n")
             os.flush()
-            return process.waitFor() == 0
+            process.waitFor() == 0
         } catch (e: Exception) {
             Log.e(TAG, "Failed to execute root commands batch", e)
             false
