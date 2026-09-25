@@ -10,7 +10,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.abdullah.wifibridge.engine.RootNetworkMasterEngine
-import com.abdullah.wifibridge.service.BridgeForegroundService
+import com.abdullah.wifibridge.server.BridgeForegroundService
 
 class MainActivity : AppCompatActivity() {
 
