@@ -1,12 +1,13 @@
 package com.abdullah.wifibridge.engine
 
-import android.content.Context
-import android.net.wifi.WifiManager
 import android.util.Log
 import java.io.BufferedReader
 import java.io.DataOutputStream
 import java.io.IOException
 import java.io.InputStreamReader
+import java.net.Inet4Address
+import java.net.NetworkInterface
+import java.util.Collections
 import java.util.Random
 
 object RootNetworkMasterEngine {
@@ -107,17 +108,51 @@ object RootNetworkMasterEngine {
     }
 
     /**
-     * 🚀 إعداد الـ Subnet وتوجيه الـ NAT خصيصاً لسيناريو (الواي فاي إلى الـ P2P)
+     * 🔍 استخراج العنوان الفعلي (IPv4) المعين لأي واجهة شبكة في النظام برمجياً
+     */
+    fun getInterfaceIpAddress(interfaceName: String): String? {
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            for (intf in Collections.list(interfaces)) {
+                if (intf.name.equals(interfaceName, ignoreCase = true)) {
+                    val addrs = intf.inetAddresses
+                    for (addr in Collections.list(addrs)) {
+                        if (!addr.isLoopbackAddress && addr is Inet4Address) {
+                            val hostAddress = addr.hostAddress
+                            Log.i(TAG, "Found IP address for interface $interfaceName: $hostAddress")
+                            return hostAddress
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching IP address for interface: $interfaceName", e)
+        }
+        return null
+    }
+
+    /**
+     * 🚀 إعداد الـ Subnet وتوجيه الـ NAT وتثبيت البوابة الديناميكية بدقة متناهية
      */
     fun setupCustomSubnetAndNat(subnetX: Int, gatewayY: Int, outboundInterface: String, hotspotInterface: String): Boolean {
-        // بما أن الإنترنت يأتي عبر الواي فاي، نحدد الواجهة بدقة (عادة wlan0)
+        // 1. تحديد واجهة الخروج (WAN) النشطة
         val activeWan = if (outboundInterface.isBlank() || outboundInterface == "rmnet_data0") detectActiveWanInterface() else outboundInterface
-        val customGatewayIp = "192.168.$subnetX.$gatewayY"
         
-        Log.i(TAG, "Configuring NAT: WAN (In/Out) = $activeWan | Hotspot LAN = $hotspotInterface | Gateway = $customGatewayIp")
+        // 2. محاولة جلب الأيبي الفعلي لواجهة البث المباشر (Wi-Fi Direct P2P) من النظام إن وجد
+        val existingInterfaceIp = getInterfaceIpAddress(hotspotInterface)
+        val customGatewayIp = if (!existingInterfaceIp.isNullOrEmpty()) {
+            Log.i(TAG, "Using dynamic active interface IP for gateway: $existingInterfaceIp")
+            existingInterfaceIp
+        } else {
+            val fallbackIp = "192.168.$subnetX.$gatewayY"
+            Log.i(TAG, "Interface IP not found yet, applying custom fallback gateway: $fallbackIp")
+            fallbackIp
+        }
+        
+        Log.i(TAG, "Configuring NAT Pipeline: WAN (In/Out) = $activeWan | Hotspot LAN = $hotspotInterface | Gateway = $customGatewayIp")
 
         val commands = listOf(
-            // تنظيف قواعد التوجيه السابقة فقط لتجنب التداخل
+            // تنظيف قواعد التوجيه السابقة لتجنب أي تداخل
             "iptables -D FORWARD -i $hotspotInterface -o $activeWan -j ACCEPT 2>/dev/null || true",
             "iptables -D FORWARD -i $activeWan -o $hotspotInterface -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true",
             "iptables -t nat -D POSTROUTING -o $activeWan -j MASQUERADE 2>/dev/null || true",
@@ -131,7 +166,7 @@ object RootNetworkMasterEngine {
             "iptables -A FORWARD -i $hotspotInterface -o $activeWan -j ACCEPT",
             "iptables -A FORWARD -i $activeWan -o $hotspotInterface -m state --state RELATED,ESTABLISHED -j ACCEPT",
             
-            // قاعدة الترجمة الحية للعنوان (NAT Masquerade) للخروج عبر واي فاي الراوتر
+            // قاعدة الترجمة الحية للعنوان (NAT Masquerade) للخروج عبر الإنترنت
             "iptables -t nat -A POSTROUTING -o $activeWan -j MASQUERADE"
         )
         return executeRootCommandsBatch(commands)
