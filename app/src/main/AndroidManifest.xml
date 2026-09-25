@@ -1,97 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
     package="com.abdullah.wifibridge">
 
-    <!-- ============================================================= -->
-    <!-- 1. أذونات الطاقة والتحكم بالمعالج (ضمان استمرار الجسر)       -->
-    <!-- ============================================================= -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-
-    <!-- ============================================================= -->
-    <!-- 2. أذونات الشبكة والإنترنت والـ Wi-Fi                         -->
-    <!-- ============================================================= -->
+    <!-- أذونات الشبكة وحالة الاتصال -->
+    <permission android:name="android.permission.ACCESS_SUPERUSER" android:protectionLevel="dangerous" />
+    
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
-
-    <!-- ============================================================= -->
-    <!-- 3. إدارة الأجهزة المجاورة والموقع الجغرافي                   -->
-    <!-- ============================================================= -->
-    <!-- للأجهزة على Android 12 (API 31) وما فوق دون الحاجة للـ GPS -->
-    <uses-permission
-        android:name="android.permission.NEARBY_WIFI_DEVICES"
-        android:usesPermissionFlags="neverForLocation"
-        tools:targetApi="s" />
-
-    <!-- للمصادقة على الشبكات في Android 11 وما دون فقط -->
-    <uses-permission
-        android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="32" />
-    <uses-permission
-        android:name="android.permission.ACCESS_COARSE_LOCATION"
-        android:maxSdkVersion="32" />
-
-    <!-- ============================================================= -->
-    <!-- 4. أذونات خدمات الخلفية والإشعارات (Android 13+ & 14+)        -->
-    <!-- ============================================================= -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    
+    <!-- صلاحيات التشغيل المستمر في الخلفية -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission 
-        android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" 
-        tools:targetApi="upside_down_cake" />
-    <uses-permission 
-        android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" 
-        tools:targetApi="upside_down_cake" />
-    <uses-permission 
-        android:name="android.permission.POST_NOTIFICATIONS" 
-        tools:targetApi="tiramisu" />
-
-    <!-- ============================================================= -->
-    <!-- 5. استعلامات رؤية التطبيقات والروابط الخارجية (API 30+)       -->
-    <!-- ============================================================= -->
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <category android:name="android.intent.category.BROWSABLE" />
-            <data android:scheme="https" />
-        </intent>
-    </queries>
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
-        android:allowBackup="false"
+        android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="Wi-Fi Bridge Engine"
+        android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Material3.DayNight.NoActionBar"
-        android:usesCleartextTraffic="true"
-        tools:targetApi="34">
+        android:theme="@style/Theme.AppCompat.NoActionBar">
 
-        <!-- الشاشة الرئيسية للتطبيق -->
+        <!-- النشاط الرئيسي للتطبيق -->
         <activity
-            android:name=".ui.MainActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize"
-            android:exported="true"
-            android:launchMode="singleTop"
-            android:windowSoftInputMode="adjustResize">
+            android:name=".MainActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- خدمة الجسر (Hotspot/Proxy Service) مدعومة بأنواع متعددة لتفادي إغلاقها -->
+        <!-- خدمة الخلفية المسؤولة عن بقاء الجسر الشبكي وقواعد الـ Root تعمل بثبات -->
         <service
-            android:name=".server.HotspotService"
+            android:name=".service.BridgeForegroundService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice|dataSync"
-            tools:targetApi="upside_down_cake" />
+            android:foregroundServiceType="dataSync" />
 
     </application>
-
 </manifest>
