@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -15,6 +16,8 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var statusTextView: TextView
     private lateinit var btnToggleBridge: Button
+    private lateinit var etSubnetX: EditText
+    private lateinit var etGatewayY: EditText
 
     private var isBridgeActive = false
 
@@ -24,8 +27,9 @@ class MainActivity : AppCompatActivity() {
 
         statusTextView = findViewById(R.id.statusTextView)
         btnToggleBridge = findViewById(R.id.btnToggleBridge)
+        etSubnetX = findViewById(R.id.etSubnetX)
+        etGatewayY = findViewById(R.id.etGatewayY)
 
-        // فحص صلاحيات الروت أولاً عند الإقلاع باستخدام الدالة الصحيحة checkRootAccess()
         checkRootAccess()
 
         btnToggleBridge.setOnClickListener {
@@ -40,7 +44,6 @@ class MainActivity : AppCompatActivity() {
     private fun checkRootAccess() {
         statusTextView.text = "جاري التحقق من صلاحيات الجذر (Root)..."
         Thread {
-            // التصحيح: استدعاء checkRootAccess الموجودة في RootNetworkMasterEngine
             val hasRoot = RootNetworkMasterEngine.checkRootAccess()
             runOnUiThread {
                 if (hasRoot) {
@@ -57,8 +60,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startBridgeService() {
+        val subnetStr = etSubnetX.text.toString().trim()
+        val gatewayStr = etGatewayY.text.toString().trim()
+
+        val subnetX = if (subnetStr.isNotEmpty()) subnetStr.toInt() else 50
+        val gatewayY = if (gatewayStr.isNotEmpty()) gatewayStr.toInt() else 1
+
         val serviceIntent = Intent(this, BridgeForegroundService::class.java).apply {
-            action = "ACTION_START_BRIDGE"
+            putExtra("SUBNET_X", subnetX)
+            putExtra("GATEWAY_Y", gatewayY)
         }
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -68,9 +78,9 @@ class MainActivity : AppCompatActivity() {
         }
         
         isBridgeActive = true
-        btnToggleBridge.text = "إيقاف الجسر الشفاف"
+        btnToggleBridge.text = "إيقاف الجسر الشفاف والبث"
         btnToggleBridge.setBackgroundColor(Color.RED)
-        Toast.makeText(this, "تم تشغيل الجسر الشفاف بدون قيود!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "تم تشغيل البث على Subnet: 192.168.$subnetX.$gatewayY", Toast.LENGTH_SHORT).show()
     }
 
     private fun stopBridgeService() {
@@ -78,8 +88,8 @@ class MainActivity : AppCompatActivity() {
         stopService(serviceIntent)
         
         isBridgeActive = false
-        btnToggleBridge.text = "تشغيل الجسر الشفاف"
+        btnToggleBridge.text = "تشغيل الجسر الشفاف والبث"
         btnToggleBridge.setBackgroundColor(Color.parseColor("#4CAF50"))
-        Toast.makeText(this, "تم إيقاف الجسر وإعادة تعيين الشبكة.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "تم إيقاف البث وإعادة تعيين الشبكة.", Toast.LENGTH_SHORT).show()
     }
 }
