@@ -10,12 +10,13 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     
-    <!-- أذونات الموقع الجغرافي والأجهزة المجاورة (مطلوبة للواي فاي والبث في أندرويد 12+) -->
+    <!-- أذونات الموقع الجغرافي (ضرورية للواي فاي والبث والـ LocalOnlyHotspot) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    
+    <!-- إذن الأجهزة المجاورة (مطلوب لأندرويد 12+ بدون علم neverForLocation لمنع الرفض التلقائي) -->
     <uses-permission 
         android:name="android.permission.NEARBY_WIFI_DEVICES"
-        android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
 
     <!-- أذونات خدمات الخلفية الصريحة للأنظمة الحديثة (أندرويد 13 و 14+) -->
@@ -27,6 +28,7 @@
     <!-- إذن الكاميرا لمسح الـ QR Code في تطبيق العميل -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.wifi" android:required="true" />
 
     <!-- منع الجهاز من النوم وإبقاء اتصال خادم البروكسي حياً -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -53,7 +55,7 @@
             </intent-filter>
         </activity>
 
-        <!-- خدمة البث وخادم البروكسي في الخلفية (تم تحديد نوعين متوافقين مع أندرويد 14+) -->
+        <!-- خدمة البث وخادم البروكسي في الخلفية متوافقة كلياً مع أندرويد 14+ -->
         <service
             android:name=".server.HotspotService"
             android:enabled="true"
