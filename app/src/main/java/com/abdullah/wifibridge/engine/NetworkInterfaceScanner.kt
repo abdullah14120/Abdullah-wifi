@@ -5,25 +5,26 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 
 /**
- * NetworkInterfaceScanner - كاشف واجهات الشبكة الذكي والمستقل.
- * يقوم بفحص بيئة لينكس الداخلية عبر الروت لتحديد بطاقة الإنترنت الخارجي (WAN) وبطاقة البث (LAN/Hotspot) ديناميكياً.
+ * NetworkInterfaceScanner - كاشف واجهات الشبكة الذكي والمستقل (الإصدار المحسن).
+ * مُعد خصيصاً لدعم أجهزة كوالكوم وإصدارات أندرويد المختلفة (مثل Redmi 5A - Android 8.1).
  */
 object NetworkInterfaceScanner {
 
     private const val TAG = "InterfaceScanner"
 
     /**
-     * استشعار بطاقة الإنترنت الخارجي النشطة حالياً (Cellular Data أو Wi-Fi الأساسي)
+     * استشعار بطاقة الإنترنت الخارجي النشطة حالياً (WAN)
+     * سواء كانت Wi-Fi أو بيانات جوال، بناءً على جدول التوجيه الافتراضي (ip route)
      */
-    fun getActiveWanInterface(): String? {
+    fun getActiveWanInterface(): String {
         var wanInterface: String? = null
         try {
-            val process = Runtime.getRuntime().exec("su -c ip route show")
+            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "ip route show"))
             val reader = BufferedReader(InputStreamReader(process.inputStream))
             var line: String?
             
             while (reader.readLine().also { line = it } != null) {
-                // البحث عن السطر الذي يحتوي على مسار الخروج الافتراضي (default via ... dev ...)
+                // البحث عن السطر الافتراضي المعتمد للخروج (default via ... dev ...)
                 if (line!!.contains("default")) {
                     val tokens = line!!.split("\\s+".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
                     for (i in tokens.indices) {
@@ -40,32 +41,36 @@ object NetworkInterfaceScanner {
             Log.e(TAG, "خطأ أثناء استشعار واجهة WAN: ${e.message}")
         }
 
-        // إذا لم يتم العثور عليها تلقائياً، نعود للقيم الشائعة كخيار احتياطي
+        // إذا كان التطبيق يعتمد على استقبال الإنترنت عبر الواي فاي، فالقيمة الافتراضية الآمنة هي wlan0
         if (wanInterface.isNullOrEmpty()) {
-            wanInterface = "rmnet_data0"
-            Log.w(TAG, "تعذر تحديد WAN بدقة، استخدام القيمة الاحتياطية: $wanInterface")
+            wanInterface = "wlan0"
+            Log.w(TAG, "تعذر تحديد WAN، الاعتماد على القيمة الافتراضية للواي فاي: $wanInterface")
         } else {
-            Log.i(TAG, "تم بنجاح رصد واجهة الإنترنت الخارجي: $wanInterface")
+            Log.i(TAG, "تم بنجاح رصد واجهة الإنترنت الخارجي (WAN): $wanInterface")
         }
         
         return wanInterface
     }
 
     /**
-     * تحديد بطاقة نقطة البث الداخلية (Hotspot Interface) حسب إصدار أندرويد
+     * تحديد بطاقة نقطة البث الداخلية (Hotspot Interface)
+     * تم تحسينها لتتوافق مع معالجات كوالكوم (Snapdragon) وأندرويد 8.1 حيث تكون wlan0 هي الأساس
      */
     fun getHotspotInterface(): String {
-        val possibleHotspots = arrayOf("ap0", "swlan0", "wlan1", "softap0", "ap-wlan0")
+        // القوائم المحتملة لأسماء واجهات البث حسب الأردنرويد والمعالج
+        val possibleHotspots = arrayOf("ap0", "wlan0", "swlan0", "wlan1", "softap0", "ap-wlan0")
+        val activeInterfaces = mutableListOf<String>()
+
         try {
-            val process = Runtime.getRuntime().exec("su -c ip link show")
+            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "ip link show"))
             val reader = BufferedReader(InputStreamReader(process.inputStream))
             var line: String?
             
             while (reader.readLine().also { line = it } != null) {
                 for (iface in possibleHotspots) {
+                    // التحقق من الواجهة التي تحتوي على اسم البطاقة وتكون حالتها نشطة أو قابلة للبث
                     if (line!!.contains(iface)) {
-                        Log.i(TAG, "تم رصد واجهة البث النشطة: $iface")
-                        return iface
+                        activeInterfaces.add(iface)
                     }
                 }
             }
@@ -75,7 +80,16 @@ object NetworkInterfaceScanner {
             Log.e(TAG, "خطأ أثناء استشعار واجهة Hotspot: ${e.message}")
         }
         
-        // القيمة الافتراضية الأكثر اعتماداً في أندرويد
-        return "ap0"
+        // هندسة خاصة لجهاز Redmi 5A وأندرويد 8.1:
+        // غالبًا في أندرويد 8.1 معالجات Snapdragon، تكون wlan0 مسؤولة عن استقبال البث وإرساله معاً عند تفعيل الـ Routing.
+        val selectedHotspot = if (activeInterfaces.contains("ap0")) {
+            "ap0"
+        } else {
+            // القيمة المضمونة لهواتف كوالكوم في هذا الإصدار
+            "wlan0"
+        }
+
+        Log.i(TAG, "تم اعتماد واجهة البث (Hotspot): $selectedHotspot (الواجهات المكتشفة: $activeInterfaces)")
+        return selectedHotspot
     }
 }
