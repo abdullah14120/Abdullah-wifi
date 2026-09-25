@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "WhatsAppTransfer"
+rootProject.name = "AbdullahWifi"
 include(":app")
