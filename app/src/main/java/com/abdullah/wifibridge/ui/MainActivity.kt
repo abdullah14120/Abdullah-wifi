@@ -1,13 +1,16 @@
 package com.abdullah.wifibridge.ui
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.abdullah.wifibridge.databinding.ActivityMainBinding
-import com.abdullah.wifibridge.model.NetworkConfig
 import com.abdullah.wifibridge.server.HotspotService
 import com.abdullah.wifibridge.utils.QRCodeGenerator
 
@@ -16,12 +19,44 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var isServerRunning = false
 
+    // مستلم تحديثات حالة البث والاسم الحقيقي للشبكة
+    private val hotspotReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == HotspotService.ACTION_HOTSPOT_STATE) {
+                val isRunning = intent.getBooleanExtra(HotspotService.EXTRA_IS_RUNNING, false)
+                val actualSsid = intent.getStringExtra(HotspotService.EXTRA_SSID) ?: ""
+                val actualPassword = intent.getStringExtra(HotspotService.EXTRA_PASSWORD) ?: ""
+
+                if (isRunning) {
+                    updateUiWithActualHotspot(actualSsid, actualPassword)
+                } else {
+                    stopBridgeServerUi()
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         setupListeners()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        val filter = IntentFilter(HotspotService.ACTION_HOTSPOT_STATE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(hotspotReceiver, filter, RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(hotspotReceiver, filter)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        unregisterReceiver(hotspotReceiver)
     }
 
     private fun setupListeners() {
@@ -35,46 +70,41 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startBridgeServer() {
-        val ssid = binding.etSsid.text.toString().ifEmpty { "Abdullah-WiFi-Bridge" }
-        val password = binding.etPassword.text.toString().ifEmpty { "12345678" }
-        val subnetX = binding.etSubnetX.text.toString().toIntOrNull() ?: 10
-        val hostY = binding.etHostY.text.toString().toIntOrNull() ?: 1
-        val gatewayY = binding.etGatewayY.text.toString().toIntOrNull() ?: 254
-
-        val intent = Intent(this, HotspotService::class.java).apply {
-            putExtra("SSID", ssid)
-            putExtra("PASSWORD", password)
-            putExtra("SUBNET_X", subnetX)
-            putExtra("HOST_Y", hostY)
-            putExtra("GATEWAY_Y", gatewayY)
-        }
-
+        val intent = Intent(this, HotspotService::class.java)
         ContextCompat.startForegroundService(this, intent)
+        binding.tvStatus.text = "جاري تهيئة بث الشبكة وتوليد الكود..."
+    }
 
-        // توليد وعرض الـ QR Code للعملاء
-        val qrBitmap = QRCodeGenerator.generateWifiQrCode(ssid, password)
-        if (qrBitmap != null) {
-            binding.ivQrCode.setImageBitmap(qrBitmap)
-            binding.tvQrSsidInfo.text = "SSID: $ssid | Pass: $password"
-            binding.cardQrContainer.visibility = View.VISIBLE
-        }
-
+    private fun updateUiWithActualHotspot(ssid: String, pass: String) {
         isServerRunning = true
         binding.btnToggleServer.text = "إيقاف خادم البث"
 
-        val config = NetworkConfig(subnetX, hostY, gatewayY)
-        binding.tvStatus.text = "البث يعمل الآن على:\nIP: ${config.localIpAddress}\nGateway: ${config.routerGatewayAddress}"
-        Toast.makeText(this, "تم تشغيل الشبكة وتوليد الـ QR Code", Toast.LENGTH_SHORT).show()
+        // تحديث حقول الواجهة بالاسم والكلمة الحقيقية المفعّلة في النظام
+        binding.etSsid.setText(ssid)
+        binding.etPassword.setText(pass)
+
+        // توليد الـ QR Code بالبيانات الحقيقية للتأكد من نجاح الاتصال 100%
+        val qrBitmap = QRCodeGenerator.generateWifiQrCode(ssid, pass)
+        if (qrBitmap != null) {
+            binding.ivQrCode.setImageBitmap(qrBitmap)
+            binding.tvQrSsidInfo.text = "SSID: $ssid | Pass: $pass"
+            binding.cardQrContainer.visibility = View.VISIBLE
+        }
+
+        binding.tvStatus.text = "تم تفعيل البث بنجاح!\nالاسم الحقيقي: $ssid"
+        Toast.makeText(this, "تم تفعيل البث وتحديث الباركود", Toast.LENGTH_SHORT).show()
     }
 
     private fun stopBridgeServer() {
         val intent = Intent(this, HotspotService::class.java)
         stopService(intent)
+        stopBridgeServerUi()
+    }
 
+    private fun stopBridgeServerUi() {
         isServerRunning = false
         binding.cardQrContainer.visibility = View.GONE
         binding.btnToggleServer.text = "بدء البث المخصص وتوليد QR"
         binding.tvStatus.text = "البث متوقف"
-        Toast.makeText(this, "تم إيقاف الخادم", Toast.LENGTH_SHORT).show()
     }
 }
