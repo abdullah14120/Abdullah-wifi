@@ -16,7 +16,6 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.abdullah.wifibridge.databinding.ActivityMainBinding
 import com.abdullah.wifibridge.server.HotspotService
@@ -27,31 +26,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var isServerRunning = false
 
-    // 1. مسجل الأذونات الذكي (Multiple Permissions Launcher)
+    // 1. مسجل الأذونات الذكي والمريح
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        // نتحقق من الأذونات الأساسية للتشغيل (الموقع والوايفاي)
-        val isLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-
-        val isNearbyGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            permissions[Manifest.permission.NEARBY_WIFI_DEVICES] == true
-        } else {
-            true
-        }
-
-        if (isLocationGranted && isNearbyGranted) {
-            // تم منح الأذونات الأساسية بنجاح
-            checkAndRequestBatteryOptimization()
-            startBridgeServerService()
-        } else {
-            Toast.makeText(
-                this,
-                "يلزم إذن الموقع والأجهزة المجاورة لتفعيل بث الواي فاي!",
-                Toast.LENGTH_LONG
-            ).show()
-        }
+        checkPermissionsAndProceed()
     }
 
     // 2. مستلم تحديثات حالة البث والاسم الحقيقي للشبكة من HotspotService
@@ -109,49 +88,85 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * فحص الأذونات المطلوبة بذكاء حسب إصدار أندرويد
+     * فحص الأذونات بذكاء ومراعاة إصدار النظام تلافيًا لأخطاء Android 11 و 12+
      */
     private fun checkPermissionsAndStart() {
         val permissionsToRequest = mutableListOf<String>()
 
-        // 1. أذونات الموقع الأساسية (ضرورية للـ Hotspot والـ LocalOnlyHotspot في أندرويد)
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+        // 1. أذونات الموقع الجغرافي (مطلوبة لجميع الإصدارات)
+        if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
             permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
             permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
         }
 
-        // 2. إذن الأجهزة المجاورة (Android 12+)
+        // 2. إذن الأجهزة المجاورة (مطلوب فقط بدءاً من Android 12 / API 31)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED) {
+            if (!hasPermission(Manifest.permission.NEARBY_WIFI_DEVICES)) {
                 permissionsToRequest.add(Manifest.permission.NEARBY_WIFI_DEVICES)
             }
         }
 
-        // 3. إذن الإشعارات (Android 13+) - اختياري لعدم تعطيل البث إذا رفضه المستخدم
+        // 3. إذن الإشعارات (مطلوب فقط بدءاً من Android 13 / API 33)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            if (!hasPermission(Manifest.permission.POST_NOTIFICATIONS)) {
                 permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
 
         if (permissionsToRequest.isNotEmpty()) {
-            // طلب الأذونات المتبقية فقط
             permissionLauncher.launch(permissionsToRequest.toTypedArray())
         } else {
-            // جميع الأذونات ممنوحة بالفعل
-            checkAndRequestBatteryOptimization()
-            startBridgeServerService()
+            checkPermissionsAndProceed()
         }
     }
 
     /**
-     * طلب استثناء تحسينات البطارية لتجنب قتل السيرفر في الخلفية
+     * التحقق النهائي قبل التمرير وبدء الخدمة
+     */
+    private fun checkPermissionsAndProceed() {
+        val hasLocation = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION) || 
+                          hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+
+        val hasNearby = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            hasPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
+        } else {
+            true // غير موجود في أندرويد 11 وما قبله
+        }
+
+        if (hasLocation && hasNearby) {
+            checkAndRequestBatteryOptimization()
+            startBridgeServerService()
+        } else {
+            Toast.makeText(this, "يرجى منح إذن الموقع والأجهزة المجاورة لتشغيل البث", Toast.LENGTH_LONG).show()
+            openAppSettings()
+        }
+    }
+
+    private fun hasPermission(permission: String): Boolean {
+        return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
+     * توجيه المستخدم لصفحة إعدادات التطبيق إذا رفض النظام طلب الإذن تلقائياً
+     */
+    private fun openAppSettings() {
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * طلب استثناء تحسينات البطارية لعدم إغلاق سيرفر البروكسي في الخلفية
      */
     @SuppressLint("BatteryLife")
     private fun checkAndRequestBatteryOptimization() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-            val packageName = packageName
             if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
                 try {
                     val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
@@ -159,7 +174,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     startActivity(intent)
                 } catch (e: Exception) {
-                    Toast.makeText(this, "يرجى السماح للتطبيق بالعمل في الخلفية من الإعدادات", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "يرجى تعطيل تحسين البطارية للتطبيق من الإعدادات", Toast.LENGTH_SHORT).show()
                 }
             }
         }
