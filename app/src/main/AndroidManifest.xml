@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     
-    <!-- أذونات الموقع الجغرافي والأجهزة المجاورة (مطلوبة للواي فاي في أندرويد 12+) -->
+    <!-- أذونات الموقع الجغرافي والأجهزة المجاورة (مطلوبة للواي فاي والبث في أندرويد 12+) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission 
@@ -18,12 +18,17 @@
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
 
-    <!-- أذونات الخدمات في الخلفية وإشعارات أندرويد 13+ -->
+    <!-- أذونات خدمات الخلفية الصريحة للأنظمة الحديثة (أندرويد 13 و 14+) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     
-    <!-- منع الجهاز من النوم وإبقاء اتصال الشبكة حياً -->
+    <!-- إذن الكاميرا لمسح الـ QR Code في تطبيق العميل -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- منع الجهاز من النوم وإبقاء اتصال خادم البروكسي حياً -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
@@ -40,6 +45,7 @@
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -47,12 +53,24 @@
             </intent-filter>
         </activity>
 
-        <!-- خدمة البث الافتراضية في الخلفية مع تحديد نوع الخدمة الصريح لأندرويد 14 -->
+        <!-- خدمة البث وخادم البروكسي في الخلفية (تم تحديد نوعين متوافقين مع أندرويد 14+) -->
         <service
             android:name=".server.HotspotService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="connectedDevice|dataSync" />
+
+        <!-- في حال إضافة تطبيق العميل المتصل عبر VpnService مستقبلاً -->
+        <!-- 
+        <service
+            android:name=".client.CustomIpVpnService"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+        -->
 
     </application>
 
