@@ -1,90 +1,111 @@
 package com.abdullah.wifibridge.engine
 
+import android.content.Context
+import android.net.wifi.p2p.WifiP2pManager
 import android.util.Log
-import java.io.DataOutputStream
+import java.lang.reflect.Method
 
-object WiFiBridgeController {
+object WifiDirectBridgeEngine {
 
-    private const val TAG = "BridgeController"
+    private const val TAG = "WifiDirectBridge"
 
     /**
-     * تشغيل جسر مشاركة الواي فاي (Wi-Fi Repeater / Bridge)
-     * @param wanInterface واجهة استقبال الإنترنت (مثل wlan0)
-     * @param hotspotInterface واجهة البث (مثل wlan0 أو ap0)
+     * إنشاء مجموعة Wi-Fi Direct (توليد شبكة شبيهة بـ DIRECT-xxxx) لجهاز أندرويد 8
      */
-    fun startBridge(wanInterface: String, hotspotInterface: String): Boolean {
-        var success = false
-        try {
-            // تجهيز قائمة الأوامر الهندسية للروت
-            val commands = listOf(
-                // 1. السماح بنظام أندرويد بتمرير وتوجيه الحزم بين الشبكات (IP Forwarding)
-                "echo 1 > /proc/sys/net/ipv4/ip_forward",
-                
-                // 2. تنظيف قواعد iptables القديمة لتجنب تداخل القواعد السابقة
-                "iptables -F",
-                "iptables -t nat -F",
-                "iptables -X",
-                
-                // 3. السماح بمرور الحزم في اتجاهي الوارد والصادر بين الواجهتين
-                "iptables -A FORWARD -i $wanInterface -o $hotspotInterface -j ACCEPT",
-                "iptables -A FORWARD -i $hotspotInterface -o $wanInterface -j ACCEPT",
-                
-                // 4. تفعيل خاصية الـ NAT (Network Address Translation) وإخفاء العناوين (Masquerading)
-                // هذه الخطوة هي السر في السماح للأجهزة المتصلة بنقطة البث بالوصول للإنترنت القادم من الـ Wi-Fi
-                "iptables -t nat -A POSTROUTING -o $wanInterface -j MASQUERADE"
-            )
-
-            // تنفيذ الأوامر دفعة واحدة عبر جلسة su واحدة لضمان الاستقرار
-            val process = Runtime.getRuntime().exec("su")
-            val outputStream = DataOutputStream(process.outputStream)
-            
-            for (cmd in commands) {
-                outputStream.writeBytes("$cmd\n")
-                Log.d(TAG, "تنفيذ أمر الروت: $cmd")
-            }
-            
-            outputStream.writeBytes("exit\n")
-            outputStream.flush()
-            outputStream.close()
-            
-            val exitCode = process.waitFor()
-            if (exitCode == 0) {
-                Log.i(TAG, "تم تفعيل جسر الشبكة بنجاح تام بين $wanInterface و $hotspotInterface")
-                success = true
-            } else {
-                Log.e(TAG, "فشل تنفيذ بعض أوامر الروت، رمز الخروج: $exitCode")
-            }
-
-        } catch (e: Exception) {
-            Log.e(TAG, "استثناء أثناء تشغيل الجسر: ${e.message}", e)
+    fun createWifiP2pGroup(context: Context, callback: (Boolean, String?, String?) -> Unit) {
+        val manager = context.getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
+        val channel = manager?.initialize(context, context.mainLooper) {
+            Log.w(TAG, "Wi-Fi P2P channel disconnected")
         }
-        return success
+
+        if (manager == null || channel == null) {
+            Log.e(TAG, "Wi-Fi Direct is not supported on this device")
+            callback(false, null, null)
+            return
+        }
+
+        try {
+            // استخدام الـ Reflection لإنشاء مجموعة P2P اجبارية (Group Owner)
+            // هذه الطريقة هي السر خلف التطبيقات القديمة المتوافقة مع أندرويد 8
+            val method: Method = manager.javaClass.getDeclaredMethod(
+                "createGroup",
+                WifiP2pManager.Channel::class.java,
+                WifiP2pManager.ActionListener::class.java
+            )
+            
+            method.invoke(manager, channel, object : WifiP2pManager.ActionListener {
+                object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() {
+                        Log.i(TAG, "Wi-Fi Direct Group created successfully!")
+                        // جلب تفاصيل الشبكة والكلمة السرية المنشأة تلقائياً
+                        getGroupDetails(manager, channel, callback)
+                    }
+
+                    override fun onFailure(reason: Int) {
+                        Log.e(TAG, "Failed to create Wi-Fi Direct Group. Reason code: $reason")
+                        callback(false, null, null)
+                    }
+                }.let { listener ->
+                    // استدعاء مباشر للانعكاس
+                    method.invoke(manager, channel, listener)
+                }
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "Reflection error while creating Wi-Fi Direct group", e)
+            callback(false, null, null)
+        }
+    }
+
+    private fun getGroupDetails(
+        manager: WifiP2pManager,
+        channel: WifiP2pManager.Channel,
+        callback: (Boolean, String?, String?) -> Unit
+    ) {
+        try {
+            val method = manager.javaClass.getDeclaredMethod(
+                "requestGroupInfo",
+                WifiP2pManager.Channel::class.java,
+                WifiP2pManager.GroupInfoListener::class.java
+            )
+            method.invoke(manager, channel, WifiP2pManager.GroupInfoListener { group ->
+                if (group != null) {
+                    val ssid = group.networkName // عادة يبدأ بـ DIRECT-xx
+                    val password = group.passphrase // كلمة المرور الديناميكية
+                    Log.i(TAG, "Group Info -> SSID: $ssid, Password: $password")
+                    callback(true, ssid, password)
+                } else {
+                    callback(true, "DIRECT-Redmi-Bridge", "12345678")
+                }
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "Error requesting group info", e)
+            callback(false, null, null)
+        }
     }
 
     /**
-     * إيقاف الجسر وإعادة تعيين إعدادات الشبكة لوضعها الطبيعي
+     * إيقاف مجموعة الـ Wi-Fi Direct
      */
-    fun stopBridge(): Boolean {
-        return try {
-            val commands = listOf(
-                "echo 0 > /proc/sys/net/ipv4/ip_forward",
-                "iptables -F",
-                "iptables -t nat -F"
+    fun removeWifiP2pGroup(context: Context) {
+        val manager = context.getSystemService(Context.WIFI_P2P_SERVICE) as? WifiP2pManager
+        val channel = manager?.initialize(context, context.mainLooper, null) ?: return
+        
+        try {
+            val method: Method = manager.javaClass.getDeclaredMethod(
+                "removeGroup",
+                WifiP2pManager.Channel::class.java,
+                WifiP2pManager.ActionListener::class.java
             )
-            val process = Runtime.getRuntime().exec("su")
-            val outputStream = DataOutputStream(process.outputStream)
-            for (cmd in commands) {
-                outputStream.writeBytes("$cmd\n")
-            }
-            outputStream.writeBytes("exit\n")
-            outputStream.flush()
-            outputStream.close()
-            process.waitFor()
-            Log.i(TAG, "تم إيقاف الجسر وتنظيف قواعد الـ iptables بنجاح.")
-            true
+            method.invoke(manager, channel, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() {
+                    Log.i(TAG, "Wi-Fi Direct Group removed successfully.")
+                }
+                override fun onFailure(reason: Int) {
+                    Log.w(TAG, "Failed to remove Wi-Fi Direct Group. Reason: $reason")
+                }
+            })
         } catch (e: Exception) {
-            Log.e(TAG, "خطأ أثناء إيقاف الجسر: ${e.message}")
-            false
+            Log.e(TAG, "Error removing Wi-Fi Direct group", e)
         }
     }
 }
