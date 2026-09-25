@@ -84,7 +84,7 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- بطاقة إعدادات الـ Subnet والـ Gateway (بعد تصحيح الخطأ الإملائي والهيكلي) -->
+        <!-- بطاقة إعدادات الـ Subnet والـ Gateway -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -191,7 +191,7 @@
                     android:layout_height="48dp"
                     android:layout_marginBottom="8dp" />
 
-                <!-- حقل إدخال DNS مخصص (مخفي افتراضياً ويظهر عند اختيار التخصيص اليدوي) -->
+                <!-- حقل إدخال DNS مخصص -->
                 <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
