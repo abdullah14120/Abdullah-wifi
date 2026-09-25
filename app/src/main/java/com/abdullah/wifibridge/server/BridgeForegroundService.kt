@@ -28,37 +28,45 @@ class BridgeForegroundService : Service() {
         val notification = createNotification("جسر الروت الشفاف يعمل بكفاءة عالية وبدون قيود...")
         startForeground(NOTIFICATION_ID, notification)
 
-        // تشغيل المحرك تلقائياً باستخدام الكاشف الذكي
+        // تشغيل المحرك تلقائياً باستخدام الكاشف الذكي وقواعد الـ NAT للروت
         Thread {
-            val wan = NetworkInterfaceScanner.findActiveWanInterface() ?: "rmnet_data0"
-            val lan = NetworkInterfaceScanner.findHotspotInterface()
-            RootNetworkMasterEngine.startUnlimitedBridge(wan, lan, "192.168.50.1")
+            // استخدام الأسماء الصحيحة والدقيقة المطابقة لـ NetworkInterfaceScanner
+            val wan = NetworkInterfaceScanner.getActiveWanInterface() ?: "rmnet_data0"
+            val lan = NetworkInterfaceScanner.getHotspotInterface()
+
+            // تنفيذ أوامر الروت لتفعيل التوجيه والـ NAT
+            RootNetworkMasterEngine.enableIpForwarding()
+            RootNetworkMasterEngine.setupNatRules(wan, lan)
         }.start()
 
         return START_STICKY
     }
 
     override fun onDestroy() {
-        // تنظيف القواعد وإيقاف التوجيه عند إيقاف الخدمة نهائياً
+        // تنظيف القواعد وإيقاف التوجيه وإلغاء الـ iptables عند إيقاف الخدمة نهائياً
         Thread {
-            RootNetworkMasterEngine.stopUnlimitedBridge()
+            RootNetworkMasterEngine.flushAllRules()
         }.start()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun createNotification(message: String): Notification {
+    private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
                 "WiFi Bridge Root Service Channel",
                 NotificationManager.IMPORTANCE_LOW
-            )
+            ).apply {
+                description = "قناة خدمة بث الشبكة عبر الروت"
+            }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(serviceChannel)
         }
+    }
 
+    private fun createNotification(message: String): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("تطبيق عبدالله للشبكات (مروت)")
             .setContentText(message)
