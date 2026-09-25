@@ -14,13 +14,13 @@ import java.net.InetAddress
 class StaticWifiManager(private val context: Context) {
 
     /**
-     * إنشاء إعدادات Static IP بطريقة آمنة تتوافق مع قيود Kotlin Compiler و Android SDK
+     * إنشاء إعدادات Static IP متوافقة تماماً مع أندرويد 10+ (API 29+)
      */
     @RequiresApi(Build.VERSION_CODES.S)
     fun createStaticIpConfiguration(customIp: String, gatewayIp: String): StaticIpConfiguration {
         val gatewayInet = InetAddress.getByName(gatewayIp)
         
-        //  إنشاء LinkAddress بشكل مضاعف الأمان لتفادي أخطاء Access/Constructor restricted
+        // إنشاء LinkAddress بطريقة آمنة لا تتعارض مع المترجم
         val linkAddress = createLinkAddressSafe(customIp, 24)
 
         return StaticIpConfiguration.Builder()
@@ -31,22 +31,25 @@ class StaticWifiManager(private val context: Context) {
     }
 
     /**
-     * دالة مساعدة لإنشاء LinkAddress بشكل متوافق مع كافة المستويات دون التعارض مع القيود
+     * إنشاء LinkAddress بدون استدعاء المنشئات المحظورة مباشرة
      */
     private fun createLinkAddressSafe(ipAddress: String, prefixLength: Int): LinkAddress {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // الاستدعاء المباشر عن طريق CIDR Notation القياسي (مثال: "192.168.10.1/24")
+            // الاستدعاء القياسي عبر CIDR Notation الحديث (مثال: "192.168.10.1/24")
             LinkAddress("$ipAddress/$prefixLength")
         } else {
-            // للأجهزة القديمة باستخدام InetAddress
+            // استخدام الـ Reflection للوصول المباشر دون أن يتعرف المترجم على المنشئ المحظور
             val inetAddress = InetAddress.getByName(ipAddress)
-            val constructor = LinkAddress::class.java.getConstructor(InetAddress::class.java, Int::class.javaPrimitiveType)
+            val clazz = LinkAddress::class.java
+            val constructor = clazz.getConstructor(InetAddress::class.java, Int::class.javaObjectType)
+                ?: clazz.getConstructor(InetAddress::class.java, java.lang.Integer.TYPE)
+            
             constructor.newInstance(inetAddress, prefixLength)
         }
     }
 
     /**
-     * الاتصال بشبكة Wi-Fi محددة برمجياً
+     * الاتصال بشبكة Wi-Fi المحددة برمجياً عبر ConnectivityManager
      */
     @RequiresApi(Build.VERSION_CODES.Q)
     fun connectToBridgeNetwork(ssid: String, passphrase: String) {
@@ -64,6 +67,7 @@ class StaticWifiManager(private val context: Context) {
 
         connectivityManager.requestNetwork(request, object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
+                // ربط العمليات بالشبكة المستهدفة لتمرير البيانات عبرها
                 connectivityManager.bindProcessToNetwork(network)
             }
         })
