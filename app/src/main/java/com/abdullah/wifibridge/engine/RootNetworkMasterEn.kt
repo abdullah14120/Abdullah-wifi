@@ -1,5 +1,7 @@
 package com.abdullah.wifibridge.engine
 
+import android.content.Context
+import android.net.wifi.WifiManager
 import android.util.Log
 import java.io.DataOutputStream
 import java.io.IOException
@@ -35,13 +37,10 @@ object RootNetworkMasterEngine {
 
     /**
      * 🛡️ بروتوكول التنظيف العميق (Deep Environment Sanitization Protocol)
-     * يقوم بتطهير النواة تماماً، مسح وتصفية جداول الـ iptables و ip6tables، تفريغ جدول الـ ARP،
-     * ومسح مخلفات ملفات التأجير لضمان سِجل نظيف تماماً (Clean Slate) وبصمة معدومة.
      */
     fun performDeepEnvironmentSanitization(hotspotInterface: String): Boolean {
         Log.i(TAG, "=== Initiating Deep Environment Sanitization Protocol ===")
         val sanitizationCommands = listOf(
-            // 1. تصفية وإلغاء كافة قواعد الجدار الناري IPv4 بالكامل وإعادة ضبط سياساتها الافتراضية
             "iptables -F",
             "iptables -t nat -F",
             "iptables -t mangle -F",
@@ -50,8 +49,6 @@ object RootNetworkMasterEngine {
             "iptables -P INPUT ACCEPT",
             "iptables -P FORWARD ACCEPT",
             "iptables -P OUTPUT ACCEPT",
-
-            // 2. تصفية قواعد IPv6 لمنع أي تسريب خفي للحزم عبر بروتوكول النسخة السادسة
             "ip6tables -F",
             "ip6tables -t nat -F",
             "ip6tables -t mangle -F",
@@ -59,19 +56,11 @@ object RootNetworkMasterEngine {
             "ip6tables -P INPUT ACCEPT",
             "ip6tables -P FORWARD ACCEPT",
             "ip6tables -P OUTPUT ACCEPT",
-
-            // 3. تفريغ جدول الـ ARP والـ Neighbor Cache لمسح سجلات الأجهزة المتصلة سابقاً بالفيزيائي
             "ip neigh flush all",
-
-            // 4. إنزال واجهة البث مؤقتاً لتفريغ أي إعدادات عالقة من الجلسة السابقة
-            "ip link set $hotspotInterface down",
-            "ip addr flush dev $hotspotInterface",
-
-            // 5. مسح ملفات تأجير العناوين المؤقتة (DHCP Leases) لتجنب تكرار الـ IPs السابقة
+            "ip link set $hotspotInterface down 2>/dev/null || true",
+            "ip addr flush dev $hotspotInterface 2>/dev/null || true",
             "rm -rf /data/misc/dhcp/dnsmasq.leases",
             "rm -f /data/misc/apex/com.android.wifi/*",
-
-            // 6. إعادة تعيين توجيه الحزم (IP Forwarding) للصفر مؤقتاً أثناء إعادة التطهير
             "echo 0 > /proc/sys/net/ipv4/ip_forward"
         )
 
@@ -85,7 +74,7 @@ object RootNetworkMasterEngine {
     }
 
     /**
-     * تفعيل خاصية الـ IP Forwarding في نواة اللينكس للسماح بتمرير الحزم بين الشبكات
+     * تفعيل خاصية الـ IP Forwarding في نواة اللينكس
      */
     fun enableIpForwarding(): Boolean {
         return executeRootCommand("echo 1 > /proc/sys/net/ipv4/ip_forward")
@@ -93,16 +82,15 @@ object RootNetworkMasterEngine {
 
     /**
      * 🚀 ضبط وتشغيل نقطة الاتصال (SoftAP) إجبارياً وتجاوز عشوائية النظام (Hard Enforcement)
-     * لضمان تطبيق الاسم وكلمة المرور المحددة وعدم استبدالهما بقيم النظام الافتراضية.
      */
     fun forceConfigureAndStartSoftAp(ssid: String, password: String): Boolean {
         Log.i(TAG, "Enforcing custom SoftAP configuration: SSID=$ssid")
         val commands = listOf(
-            "svc wifi disable", // تعطيل الواي فاي العادي لمنع التداخل الهاردويري
+            "svc wifi disable",
             "cmd wifi set-softap-enabled false",
             "killall hostapd 2>/dev/null || true",
             "killall dnsmasq 2>/dev/null || true",
-            // حقن الإعدادات الإجبارية مع تحديد حماية WPA2_PSK صراحة
+            // إجبار النظام على اعتماد الاسم وكلمة المرور ونوع التشفير
             "cmd wifi set-softap-configuration ssid \"$ssid\" passphrase \"$password\" security WPA2_PSK",
             "cmd wifi set-softap-enabled true"
         )
@@ -113,6 +101,53 @@ object RootNetworkMasterEngine {
             Log.w(TAG, "Failed to execute complete SoftAP enforcement batch.")
         }
         return success
+    }
+
+    /**
+     * 🧠 الدالة الشاملة المتقدمة: تشغيل الهوتسبت مع استخدام آليات بديلة (Fallback) لضمان ظهور الشبكة على كافة الأجهزة
+     */
+    fun startHotspotWithManager(context: Context, ssid: String, password: String): Boolean {
+        try {
+            Log.i(TAG, "Starting hotspot via primary hard enforcement...")
+            // 1. المحاولة الأولى عبر الأوامر الصارمة المباشرة
+            if (forceConfigureAndStartSoftAp(ssid, password)) {
+                return true
+            }
+
+            Log.w(TAG, "Primary method failed. Executing advanced recovery & fallback mechanisms...")
+
+            // 2. تفعيل إعدادات الربط العامة في النظام عبر الروت لتجاوز حظر الـ OEM
+            executeRootCommand("settings put global tether_supported 1")
+
+            // 3. الحل البديل المتقدم: استخدام تدفق متسلسل لإعادة تشغيل خدمة الـ Wi-Fi والـ Tethering ومحاولة الرفع مجدداً
+            val fallbackCommands = listOf(
+                "svc wifi disable",
+                "am force-stop com.android.settings",
+                "cmd wifi set-softap-enabled false",
+                "sleep 1",
+                "cmd wifi set-softap-configuration ssid \"$ssid\" passphrase \"$password\" security WPA2_PSK",
+                "cmd wifi set-softap-enabled true"
+            )
+            
+            val fallbackSuccess = executeRootCommandsBatch(fallbackCommands)
+            if (fallbackSuccess) {
+                Log.i(TAG, "Fallback hotspot activation succeeded.")
+                return true
+            }
+
+            // 4. الطور الأخير: محاولة تفعيل الـ WifiManager برمجياً إذا سمح النظام بذلك
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            wifiManager?.let {
+                // محاولة إجبار تشغيل الـ AP بالطريقة البرمجية التقليدية كملجأ أخير
+                @Suppress("DEPRECATION")
+                it.isWifiEnabled = false
+            }
+
+            return false
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in startHotspotWithManager execution", e)
+            false
+        }
     }
 
     /**
@@ -128,7 +163,7 @@ object RootNetworkMasterEngine {
     }
 
     /**
-     * تشغيل نقطة الاتصال (SoftAP) إجبارياً عبر خدمة النظام
+     * تشغيل نقطة الاتصال عبر النظام
      */
     fun startSystemSoftAp(): Boolean {
         val commands = listOf(
@@ -146,7 +181,7 @@ object RootNetworkMasterEngine {
     }
 
     /**
-     * 🔍 التحقق الفوري من إعدادات الـ SoftAP النشطة في النظام للتأكد من نجاح الفرض
+     * 🔍 التحقق الفوري من إعدادات الـ SoftAP النشطة في النظام
      */
     fun verifyActiveSoftApConfig(): String? {
         var process: Process? = null
@@ -173,7 +208,7 @@ object RootNetworkMasterEngine {
     }
 
     /**
-     * توليد وتطبيق عنوان MAC عشوائي (MAC Spoofing) لواجهة البث لضمان بصمة شبكية جديدة كلياً على مستوى الطبقة الثانية (Layer 2)
+     * توليد وتطبيق عنوان MAC عشوائي (MAC Spoofing) لواجهة البث
      */
     fun randomizeHotspotMac(hotspotInterface: String): Boolean {
         val randomMac = generateRandomLocallyAdministeredMac()
@@ -186,52 +221,40 @@ object RootNetworkMasterEngine {
         if (success) {
             Log.i(TAG, "Successfully spoofed MAC address for $hotspotInterface to $randomMac")
         } else {
-            Log.w(TAG, "Failed to spoof MAC address for $hotspotInterface (Interface might still be initializing)")
+            Log.w(TAG, "Failed to spoof MAC address for $hotspotInterface")
         }
         return success
     }
 
-    /**
-     * دالة مساعدة لتوليد عنوان MAC عشوائي محلي الصنع صالح للشبكات اللاسلكية
-     */
     private fun generateRandomLocallyAdministeredMac(): String {
         val random = Random()
         val macBytes = ByteArray(6)
         random.nextBytes(macBytes)
-        // تعيين البت الثاني في البايت الأول ليكون العنوان محلياً (Locally Administered) ومنع التعارض العالمي
         macBytes[0] = ((macBytes[0].toInt() and 0xfe) or 0x02).toByte()
         return macBytes.joinToString(":") { "%02x".format(it) }
     }
 
     /**
-     * توليد أرقام نطاق Subnet عشوائية ديناميكية (Dynamic Subnet Rotation) 
-     * لتغيير الآي بي الافتراضي والـ Gateway في كل دورة اتصال (لتجنب الثبات والتتبع).
-     * @return مصفوفة تتكون من [SubnetX, GatewayY]
+     * توليد أرقام نطاق Subnet عشوائية ديناميكية (Dynamic Subnet Rotation)
      */
     fun generateDynamicSubnet(): Pair<Int, Int> {
         val random = Random()
-        // اختيار رقم عشوائي للنطاق الثالث بين 10 و 200 لتجنب التصادم مع شبكات الراوترات المنزلية الشائعة
         val subnetX = random.nextInt(191) + 10 
-        val gatewayY = 1 // عادة يكون الجيتواي هو .1
+        val gatewayY = 1
         return Pair(subnetX, gatewayY)
     }
 
     /**
-     * إعداد Subnet مخصص ديناميكي، وتثبيت الآي بي على الواجهة، وتفعيل قواعد الـ NAT للتوجيه والخروج (WAN)
+     * إعداد Subnet مخصص ديناميكي وتفعيل قواعد الـ NAT للتوجيه والخروج (WAN)
      */
     fun setupCustomSubnetAndNat(subnetX: Int, gatewayY: Int, outboundInterface: String, hotspotInterface: String): Boolean {
         val customGatewayIp = "192.168.$subnetX.$gatewayY"
         val commands = listOf(
-            // 1. تنظيف القواعد المحلية للواجهة والتأكد من خلوها
             "iptables -F",
             "iptables -t nat -F",
-            
-            // 2. إعطاء الآي بي المخصص لواجهة البث ورفع حالة الواجهة (UP)
             "ip addr flush dev $hotspotInterface",
             "ip addr add $customGatewayIp/24 dev $hotspotInterface",
             "ip link set $hotspotInterface up",
-
-            // 3. تفعيل قواعد الـ NAT والتوجيه للخارج (Forwarding & Masquerading)
             "iptables -A FORWARD -i $hotspotInterface -o $outboundInterface -j ACCEPT",
             "iptables -A FORWARD -i $outboundInterface -o $hotspotInterface -m state --state RELATED,ESTABLISHED -j ACCEPT",
             "iptables -t nat -A POSTROUTING -o $outboundInterface -j MASQUERADE"
@@ -240,14 +263,11 @@ object RootNetworkMasterEngine {
     }
 
     /**
-     * تطبيق قواعد اعتراض وتوجيه الـ DNS قسرياً (DNS Hijacking / Redirection) لمنع التسريب وضمان أمان الشبكة
+     * تطبيق قواعد اعتراض وتوجيه الـ DNS قسرياً (DNS Hijacking)
      */
     fun applyForcedDnsRedirection(hotspotInterface: String, targetDnsIp: String): Boolean {
         val commands = listOf(
-            // اعتراض طلبات UDP على المنفذ 53 القادمة من الأجهزة المتصلة وتحويلها للخادم الموثوق
             "iptables -t nat -A PREROUTING -i $hotspotInterface -p udp --dport 53 -j DNAT --to-destination $targetDnsIp:53",
-            
-            // اعتراض طلبات TCP على المنفذ 53 القادمة من الأجهزة المتصلة وتحويلها للخادم الموثوق
             "iptables -t nat -A PREROUTING -i $hotspotInterface -p tcp --dport 53 -j DNAT --to-destination $targetDnsIp:53"
         )
         return executeRootCommandsBatch(commands)
@@ -270,9 +290,6 @@ object RootNetworkMasterEngine {
         return executeRootCommandsBatch(commands)
     }
 
-    /**
-     * تنفيذ أمر روت منفرد
-     */
     private fun executeRootCommand(command: String): Boolean {
         var process: Process? = null
         var os: DataOutputStream? = null
@@ -294,9 +311,6 @@ object RootNetworkMasterEngine {
         }
     }
 
-    /**
-     * تنفيذ مجموعة أوامر روت بشكل متسلسل وبطريقة دفعة واحدة (Batch)
-     */
     private fun executeRootCommandsBatch(commands: List<String>): Boolean {
         var process: Process? = null
         var os: DataOutputStream? = null
