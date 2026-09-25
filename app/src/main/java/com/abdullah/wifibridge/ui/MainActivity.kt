@@ -28,14 +28,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private var isServerRunning = false
 
-    // 1. مسجل الأذونات التفاعلي الذكي
+    // مسجل الأذونات الذكي
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { _ ->
-        checkPermissionsAndProceed()
+    ) { permissions ->
+        // بعد استجابة المستخدم، نفحص ما إذا كان بإمكاننا البدء مباشرة
+        checkPermissionsAndProceed(isDirectRetry = true)
     }
 
-    // 2. مستلم تحديثات حالة البث والاسم الحقيقي للشبكة من HotspotService
     private val hotspotReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == HotspotService.ACTION_HOTSPOT_STATE) {
@@ -90,25 +90,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * فحص الأذونات بذكاء ومراعاة إصدار النظام واختلافات الواجهات (MIUI / Stock)
+     * تجهيز قائمة الأذونات المطلوبة بحسب إصدار أندرويد وواجهة النظام
      */
     private fun checkPermissionsAndStart() {
         val permissionsToRequest = mutableListOf<String>()
 
-        // 1. أذونات الموقع الجغرافي (مطلوبة لجميع الإصدارات لتشغيل Hotspot/Wi-Fi Direct)
-        if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
+        // 1. أذونات الموقع الجغرافي
+        if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION) && 
+            !hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)) {
             permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
             permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
         }
 
-        // 2. إذن الأجهزة المجاورة (مطلوب فقط بدءاً من Android 12 / API 31)
+        // 2. إذن الأجهزة المجاورة (Android 12+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             if (!hasPermission(Manifest.permission.NEARBY_WIFI_DEVICES)) {
                 permissionsToRequest.add(Manifest.permission.NEARBY_WIFI_DEVICES)
             }
         }
 
-        // 3. إذن الإشعارات (مطلوب فقط بدءاً من Android 13 / API 33)
+        // 3. إذن الإشعارات (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (!hasPermission(Manifest.permission.POST_NOTIFICATIONS)) {
                 permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -118,45 +119,45 @@ class MainActivity : AppCompatActivity() {
         if (permissionsToRequest.isNotEmpty()) {
             permissionLauncher.launch(permissionsToRequest.toTypedArray())
         } else {
-            checkPermissionsAndProceed()
+            checkPermissionsAndProceed(isDirectRetry = false)
         }
     }
 
     /**
-     * التحقق النهائي قبل التمرير وبدء الخدمة
+     * التحقق المرن للتأكد من إمكانية بدء الخدمة بدون تعليق الواجهة
      */
-    private fun checkPermissionsAndProceed() {
-        val hasLocation = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION) || 
-                          hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+    private fun checkPermissionsAndProceed(isDirectRetry: Boolean) {
+        val hasFineLocation = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+        val hasCoarseLocation = hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+        val hasLocation = hasFineLocation || hasCoarseLocation
 
         val hasNearby = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             hasPermission(Manifest.permission.NEARBY_WIFI_DEVICES)
         } else {
-            true // غير موجود في أندرويد 11 وما قبله
+            true
         }
 
-        if (!hasLocation || !hasNearby) {
-            showPermissionExplanationDialog()
-            return
+        // على أجهزة Redmi / MIUI، إذا كان إذن الموقع ممنوحاً، يمكن تشغيل LocalOnlyHotspot بنجاح حتى لو دمجت شاومي إذن الأجهزة المجاورة
+        if (hasLocation || hasNearby) {
+            if (!isLocationServiceEnabled()) {
+                showEnableLocationDialog()
+                return
+            }
+            checkAndRequestBatteryOptimization()
+            startBridgeServerService()
+        } else {
+            if (!isDirectRetry) {
+                showPermissionExplanationDialog()
+            } else {
+                Toast.makeText(this, "يرجى منحي إذن الموقع لتشغيل البث", Toast.LENGTH_LONG).show()
+            }
         }
-
-        // التأكد من أن مفتاح الـ GPS مفعّل في الجهاز (شرط أساسي لـ LocalOnlyHotspot على أندرويد 11/12)
-        if (!isLocationServiceEnabled()) {
-            showEnableLocationDialog()
-            return
-        }
-
-        checkAndRequestBatteryOptimization()
-        startBridgeServerService()
     }
 
     private fun hasPermission(permission: String): Boolean {
         return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
     }
 
-    /**
-     * التحقق مما إذا كانت خدمة الموقع (GPS) مفعلة بالنظام
-     */
     private fun isLocationServiceEnabled(): Boolean {
         val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         return locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
@@ -166,7 +167,7 @@ class MainActivity : AppCompatActivity() {
     private fun showEnableLocationDialog() {
         AlertDialog.Builder(this)
             .setTitle("تفعيل خدمة الموقع (GPS)")
-            .setMessage("يتطلب نظام أندرويد تفعيل خدمة الموقع الجغرافي في الجهاز لتشغيل نقطة الإتصال وبث الواي فاي.")
+            .setMessage("يتطلب نظام أندرويد تفعيل زر الموقع الجغرافي (GPS) في الشريحة العلوية لتشغيل نقطة الاتصال المحلية.")
             .setPositiveButton("تفعيل") { _, _ ->
                 startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
             }
@@ -175,11 +176,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showPermissionExplanationDialog() {
-        val msg = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            "يتطلب التطبيق إذن الموقع وإذن الأجهزة المجاورة لتشغيل خادم البث والواي فاي. يرجى تفعيلها من الإعدادات."
-        } else {
-            "يتطلب التطبيق إذن الموقع الجغرافي لتشغيل خادم البث والواي فاي. يرجى تفعيله من الإعدادات."
-        }
+        val msg = "يتطلب التطبيق إذن الموقع لتشغيل خادم البث والجسريات. يرجى السماح به من الإعدادات."
 
         AlertDialog.Builder(this)
             .setTitle("الأذونات مطلوبة")
@@ -189,9 +186,6 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    /**
-     * توجيه المستخدم لصفحة إعدادات التطبيق بمرونة لتغطية واجهات Redmi / MIUI
-     */
     private fun openAppSettings() {
         try {
             val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
@@ -199,13 +193,10 @@ class MainActivity : AppCompatActivity() {
             }
             startActivity(intent)
         } catch (e: Exception) {
-            Toast.makeText(this, "تعذر فتح الإعدادات تلقائياً", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "تعذر فتح الإعدادات", Toast.LENGTH_SHORT).show()
         }
     }
 
-    /**
-     * طلب استثناء تحسينات البطارية لعدم إغلاق سيرفر البروكسي في الخلفية
-     */
     @SuppressLint("BatteryLife")
     private fun checkAndRequestBatteryOptimization() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -217,15 +208,12 @@ class MainActivity : AppCompatActivity() {
                     }
                     startActivity(intent)
                 } catch (e: Exception) {
-                    Toast.makeText(this, "يرجى تعطيل موفر البطارية للتطبيق لضمان استقرار البث", Toast.LENGTH_SHORT).show()
+                    // تجنب الخلل في واجهات MIUI
                 }
             }
         }
     }
 
-    /**
-     * قراءة إعدادات الشبكة المخصصة وإرسالها للخدمة لبدء البث
-     */
     private fun startBridgeServerService() {
         val subnetX = binding.etSubnetX.text.toString().toIntOrNull() ?: 10
         val hostY = binding.etHostY.text.toString().toIntOrNull() ?: 1
