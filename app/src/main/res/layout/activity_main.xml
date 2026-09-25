@@ -84,7 +84,7 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- بطاقة إعدادات الـ Subnet والـ Gateway -->
+        <!-- بطاقة إعدادات الـ Subnet والـ Gateway (بعد تصحيح الخطأ الإملائي والهيكلي) -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -93,9 +93,9 @@
 
             <LinearLayout
                 android:layout_width="match_parent"
-                >er="vertical"
-                android:padding="16dp"
-                android:orientation="vertical">
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
 
                 <TextView
                     android:layout_width="match_parent"
@@ -162,6 +162,55 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
+        <!-- بطاقة إعدادات خادم الأسماء (DNS الموثوق) -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:elevation="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="خادم الـ DNS الموثوق للأجهزة المتصلة"
+                    android:textColor="#3F51B5"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- قائمة اختيار الـ DNS -->
+                <Spinner
+                    android:id="@+id/spinnerDns"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginBottom="8dp" />
+
+                <!-- حقل إدخال DNS مخصص (مخفي افتراضياً ويظهر عند اختيار التخصيص اليدوي) -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etCustomDns"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="أدخل عنوان الـ IP المخصص (مثال: 1.1.1.1)"
+                        android:inputType="textUri"
+                        android:maxLines="1"
+                        android:visibility="gone" />
+
+                </com.google.android.material.textfield.TextInputLayout>
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
         <!-- زر التشغيل والتحكم الرئيسي -->
         <Button
             android:id="@+id/btnToggleBridge"
@@ -178,8 +227,7 @@
         <!-- لوحة عرض الحالة واللوج (Status Log) -->
         <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
+            android:layout_height="200dp"
             android:layout_marginBottom="8dp"
             android:elevation="2dp">
 
