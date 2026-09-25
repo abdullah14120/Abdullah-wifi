@@ -4,13 +4,14 @@
     package="com.abdullah.wifibridge">
 
     <!-- ============================================================= -->
-    <!-- 1. أذونات الطاقة والمعالج (حل إشكالية SecurityException)     -->
+    <!-- 1. أذونات الطاقة والتحكم بالمعالج (ضمان استمرار الجسر)       -->
     <!-- ============================================================= -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- ============================================================= -->
-    <!-- 2. أذونات الشبكة والإنترنت الأساسية                         -->
+    <!-- 2. أذونات الشبكة والإنترنت والـ Wi-Fi                         -->
     <!-- ============================================================= -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -19,14 +20,21 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
 
     <!-- ============================================================= -->
-    <!-- 3. أذونات الموقع الجغرافي والأجهزة المجاورة                  -->
+    <!-- 3. إدارة الأجهزة المجاورة والموقع الجغرافي                   -->
     <!-- ============================================================= -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- للأجهزة على Android 12 (API 31) وما فوق دون الحاجة للـ GPS -->
     <uses-permission
         android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
+
+    <!-- للمصادقة على الشبكات في Android 11 وما دون فقط -->
+    <uses-permission
+        android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="32" />
+    <uses-permission
+        android:name="android.permission.ACCESS_COARSE_LOCATION"
+        android:maxSdkVersion="32" />
 
     <!-- ============================================================= -->
     <!-- 4. أذونات خدمات الخلفية والإشعارات (Android 13+ & 14+)        -->
@@ -36,11 +44,25 @@
         android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" 
         tools:targetApi="upside_down_cake" />
     <uses-permission 
+        android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" 
+        tools:targetApi="upside_down_cake" />
+    <uses-permission 
         android:name="android.permission.POST_NOTIFICATIONS" 
         tools:targetApi="tiramisu" />
 
+    <!-- ============================================================= -->
+    <!-- 5. استعلامات رؤية التطبيقات والروابط الخارجية (API 30+)       -->
+    <!-- ============================================================= -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="Wi-Fi Bridge Engine"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -49,10 +71,12 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="34">
 
+        <!-- الشاشة الرئيسية للتطبيق -->
         <activity
             android:name=".ui.MainActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize"
             android:exported="true"
-            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -60,12 +84,12 @@
             </intent-filter>
         </activity>
 
-        <!-- خدمة البث الجسري مع تحديد أنواع Foreground Service لـ Android 14 -->
+        <!-- خدمة الجسر (Hotspot/Proxy Service) مدعومة بأنواع متعددة لتفادي إغلاقها -->
         <service
             android:name=".server.HotspotService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice"
+            android:foregroundServiceType="connectedDevice|dataSync"
             tools:targetApi="upside_down_cake" />
 
     </application>
