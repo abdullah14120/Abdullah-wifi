@@ -1,14 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- الثيم الرئيسي متوافق تماماً مع Material 3 -->
-    <style name="Theme.WiFiBridge" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- الألوان الأساسية المرجعية -->
-        <item name="colorPrimary">@color/purple_500</item>
-        <item name="colorOnPrimary">@color/white</item>
-        <item name="colorPrimaryVariant" tools:targetApi="l">@color/purple_700</item>
-        <item name="colorSecondary">@color/teal_200</item>
+<resources>
+    <!-- الثيم الأساسي للتطبيق -->
+    <style name="Theme.WiFiBridge" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- لون شريط الحالة (الساعة والبطارية) في أعلى الشاشة -->
+        <item name="android:statusBarColor">@color/primary_dark</item>
         
-        <!-- التصحيح الهيكلي: إضافة style/ قبل النمط لتجنب خطأ الـ Raw String -->
-        <item name="textInputStyle">@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox</item>
+        <!-- لون خلفية التطبيق أثناء التحميل -->
+        <item name="android:windowBackground">@color/background_light</item>
+        
+        <!-- لون شريط التنقل السفلي (أزرار الرجوع والهوم) -->
+        <item name="android:navigationBarColor">@color/white</item>
+        
+        <!-- جعل أيقونات شريط الحالة داكنة لتناسب الخلفية الفاتحة -->
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>
