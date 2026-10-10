@@ -2,19 +2,16 @@
 # 1. تجاهل تحذيرات المكتبات الاختيارية (Optional Dependencies)
 # =========================================================
 
-# قواعد التجاهل السابقة
 -dontwarn com.google.errorprone.annotations.**
 -dontwarn com.google.j2objc.annotations.**
 -dontwarn com.jcraft.jzlib.**
 -dontwarn javassist.**
 -dontwarn javax.annotation.**
 -dontwarn org.apache.log4j.**
--dontwarn org.apache.tomcat.jni.**
+-dontwarn org.apache.tomcat.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.slf4j.**
 -dontwarn sun.security.**
-
-# قواعد التجاهل الجديدة (Protobuf, SCTP, JBoss, CLI, Jetty, etc.)
 -dontwarn com.google.protobuf.**
 -dontwarn com.sun.nio.sctp.**
 -dontwarn gnu.io.**
