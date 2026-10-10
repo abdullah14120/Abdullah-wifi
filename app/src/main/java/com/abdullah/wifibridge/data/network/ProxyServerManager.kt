@@ -11,6 +11,9 @@ import io.netty.handler.codec.http.HttpRequest
 import io.netty.handler.codec.http.HttpResponse
 import io.netty.channel.ChannelHandlerContext
 import java.net.InetSocketAddress
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class ProxyServerManager {
     private var proxyServer: HttpProxyServer? = null
@@ -20,39 +23,39 @@ class ProxyServerManager {
     private val _serverLogs = MutableStateFlow<List<String>>(emptyList())
     val serverLogs: StateFlow<List<String>> = _serverLogs
 
-    fun startServer(port: Int): Boolean {
-        return try {
-            proxyServer = DefaultHttpProxyServer.bootstrap()
-                .withPort(port)
-                // 1. الاستماع على جميع الواجهات الشبكية
-                .withAddress(InetSocketAddress("0.0.0.0", port))
-                // 2. السطر الحاسم: السماح للأجهزة الخارجية (الهاتف الثاني) بالاتصال بالبروكسي
-                .withAllowLocalOnly(false)
-                
-                .withFiltersSource(object : HttpFiltersSourceAdapter() {
-                    override fun filterRequest(originalRequest: HttpRequest, ctx: ChannelHandlerContext): HttpFilters {
-                        return object : HttpFiltersAdapter(originalRequest) {
-                            override fun clientToProxyRequest(httpObject: io.netty.handler.codec.http.HttpObject): HttpResponse? {
-                                if (httpObject is HttpRequest) {
-                                    httpObject.headers().remove("X-Forwarded-For")
-                                    httpObject.headers().remove("Via")
-                                    httpObject.headers().remove("Proxy-Connection")
-                                    httpObject.headers().set("Connection", "keep-alive")
+    fun startServer(port: Int) {
+        // نقل عملية تشغيل الخادم إلى مسار خلفي (IO Thread) لتجنب انهيار التطبيق
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                proxyServer = DefaultHttpProxyServer.bootstrap()
+                    .withPort(port)
+                    .withAddress(InetSocketAddress("0.0.0.0", port))
+                    .withAllowLocalOnly(false) // السماح للهواتف الأخرى بالاتصال
+                    .withFiltersSource(object : HttpFiltersSourceAdapter() {
+                        override fun filterRequest(originalRequest: HttpRequest, ctx: ChannelHandlerContext): HttpFilters {
+                            return object : HttpFiltersAdapter(originalRequest) {
+                                override fun clientToProxyRequest(httpObject: io.netty.handler.codec.http.HttpObject): HttpResponse? {
+                                    if (httpObject is HttpRequest) {
+                                        httpObject.headers().remove("X-Forwarded-For")
+                                        httpObject.headers().remove("Via")
+                                        httpObject.headers().remove("Proxy-Connection")
+                                        httpObject.headers().set("Connection", "keep-alive")
+                                    }
+                                    return null
                                 }
-                                return null
                             }
                         }
-                    }
-                })
-                .start()
-            
-            _isServerRunning.value = true
-            addLog("Proxy started on port: $port in Stealth Mode")
-            true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            addLog("Error starting proxy: ${e.message}")
-            false
+                    })
+                    .start()
+                
+                // تحديث حالة الواجهة بعد نجاح التشغيل
+                _isServerRunning.value = true
+                addLog("Proxy started on port: $port in Stealth Mode")
+            } catch (e: Exception) {
+                e.printStackTrace()
+                addLog("Error starting proxy: ${e.message}")
+                _isServerRunning.value = false
+            }
         }
     }
 
