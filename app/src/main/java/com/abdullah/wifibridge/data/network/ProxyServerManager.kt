@@ -24,19 +24,19 @@ class ProxyServerManager {
         return try {
             proxyServer = DefaultHttpProxyServer.bootstrap()
                 .withPort(port)
-                // السطر الجديد: إجبار البروكسي على الاستماع لجميع الواجهات بما فيها واجهة Wi-Fi Direct
+                // 1. الاستماع على جميع الواجهات الشبكية
                 .withAddress(InetSocketAddress("0.0.0.0", port))
-                // Filter to strip headers and avoid proxy fingerprinting
+                // 2. السطر الحاسم: السماح للأجهزة الخارجية (الهاتف الثاني) بالاتصال بالبروكسي
+                .withAllowLocalOnly(false)
+                
                 .withFiltersSource(object : HttpFiltersSourceAdapter() {
                     override fun filterRequest(originalRequest: HttpRequest, ctx: ChannelHandlerContext): HttpFilters {
                         return object : HttpFiltersAdapter(originalRequest) {
                             override fun clientToProxyRequest(httpObject: io.netty.handler.codec.http.HttpObject): HttpResponse? {
                                 if (httpObject is HttpRequest) {
-                                    // Strip revealing headers
                                     httpObject.headers().remove("X-Forwarded-For")
                                     httpObject.headers().remove("Via")
                                     httpObject.headers().remove("Proxy-Connection")
-                                    // Force standard connection header
                                     httpObject.headers().set("Connection", "keep-alive")
                                 }
                                 return null
@@ -44,8 +44,6 @@ class ProxyServerManager {
                         }
                     }
                 })
-                // In a full implementation, you would add .withChainProxyManager() here 
-                // to route traffic to a local Xray-core SOCKS5 port for VLESS/REALITY tunneling.
                 .start()
             
             _isServerRunning.value = true
