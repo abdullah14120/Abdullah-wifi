@@ -24,6 +24,8 @@ class ProxyServerManager {
         return try {
             proxyServer = DefaultHttpProxyServer.bootstrap()
                 .withPort(port)
+                // السطر الجديد: إجبار البروكسي على الاستماع لجميع الواجهات بما فيها واجهة Wi-Fi Direct
+                .withAddress(InetSocketAddress("0.0.0.0", port))
                 // Filter to strip headers and avoid proxy fingerprinting
                 .withFiltersSource(object : HttpFiltersSourceAdapter() {
                     override fun filterRequest(originalRequest: HttpRequest, ctx: ChannelHandlerContext): HttpFilters {
