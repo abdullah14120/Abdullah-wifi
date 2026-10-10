@@ -2,7 +2,6 @@ package com.abdullah.wifibridge.data.shizuku
 
 import android.content.pm.PackageManager
 import rikka.shizuku.Shizuku
-import java.io.File
 import kotlin.random.Random
 
 class ShizukuManager {
@@ -46,15 +45,27 @@ class ShizukuManager {
                 ifconfig p2p0 $newIp netmask 255.255.255.0 up
             """.trimIndent()
             
-            // الحل هنا: إجبار المترجم على استخدام الدالة الصحيحة عبر تحديد نوع الـ null
-            val process = Shizuku.newProcess(
-                arrayOf("sh", "-c", command), 
-                null as Array<String>?, 
-                null as File?
-            )
+            // الحل الجذري: استخدام Reflection لتجاوز خلل مترجم Kotlin
+            // هذا الكود سيبحث عن الدالة العامة (Public) ويشغلها ديناميكياً
+            val commandArray = arrayOf("sh", "-c", command)
+            val shizukuClass = Shizuku::class.java
             
-            val exitCode = process.waitFor()
-            exitCode == 0
+            val processMethod = shizukuClass.methods.firstOrNull { it.name == "newProcess" }
+            
+            if (processMethod != null) {
+                // تنفيذ الدالة بناءً على عدد المعاملات التي تطلبها النسخة الحالية من Shizuku
+                val process = when (processMethod.parameterTypes.size) {
+                    1 -> processMethod.invoke(null, commandArray)
+                    2 -> processMethod.invoke(null, commandArray, null)
+                    3 -> processMethod.invoke(null, commandArray, null, null)
+                    else -> null
+                } as? Process
+                
+                val exitCode = process?.waitFor() ?: -1
+                exitCode == 0
+            } else {
+                false
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             false
