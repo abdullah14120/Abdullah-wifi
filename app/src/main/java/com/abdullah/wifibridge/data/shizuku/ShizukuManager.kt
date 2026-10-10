@@ -2,6 +2,7 @@ package com.abdullah.wifibridge.data.shizuku
 
 import android.content.pm.PackageManager
 import rikka.shizuku.Shizuku
+import java.io.File
 import kotlin.random.Random
 
 class ShizukuManager {
@@ -45,7 +46,13 @@ class ShizukuManager {
                 ifconfig p2p0 $newIp netmask 255.255.255.0 up
             """.trimIndent()
             
-            val process = Shizuku.newProcess(arrayOf("sh", "-c", command), null, null)
+            // الحل هنا: إجبار المترجم على استخدام الدالة الصحيحة عبر تحديد نوع الـ null
+            val process = Shizuku.newProcess(
+                arrayOf("sh", "-c", command), 
+                null as Array<String>?, 
+                null as File?
+            )
+            
             val exitCode = process.waitFor()
             exitCode == 0
         } catch (e: Exception) {
