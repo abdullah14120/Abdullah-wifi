@@ -2,58 +2,53 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- الأذونات الخاصة بالشبكة وحالة الاتصال -->
+    <!-- Network & Wi-Fi Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    
+    <!-- Location is required for Wi-Fi Direct discovery -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     
-    <!-- إذن الأجهزة المجاورة للاتصالات اللاسلكية (مطلوب لأندرويد 13 وما فوق) -->
+    <!-- Android 13+ Nearby Devices (avoid needing location) -->
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" 
-        android:usesPermissionFlags="neverForLocation" 
-        tools:targetApi="tiramisu" />
+                     android:usesPermissionFlags="neverForLocation" 
+                     tools:targetApi="33"/>
 
-    <!-- أذونات التشغيل المستمر في الخلفية والتحكم بالطاقة -->
+    <!-- Foreground Service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- مطلوب لأندرويد 14 وما فوق للخدمات الأمامية -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    
-    <!-- إذن استثناء التطبيق من قيود تحسين استهلاك البطارية لضمان استمرار عمل الجسر -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
-    <!-- إذن صلاحية الروت -->
-    <uses-permission android:name="android.permission.ACCESS_SUPERUSER" />
+    <!-- Shizuku Permission -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
     <application
         android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
+        android:label="WiFi Bridge Pro"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.WiFiBridge">
+        android:theme="@style/Theme.WiFiBridge"
+        android:usesCleartextTraffic="true"> <!-- Allow HTTP through proxy -->
 
-        <!-- النشاط الرئيسي للتطبيق -->
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.MainActivity"
             android:exported="true"
-            android:windowSoftInputMode="adjustResize">
+            android:theme="@style/Theme.WiFiBridge">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- خدمة الخلفية المسؤولة عن بقاء الجسر الشبكي وقواعد الـ Root -->
         <service
-            android:name=".server.BridgeForegroundService"
-            android:enabled="true"
+            android:name=".service.ProxyForegroundService"
             android:exported="false"
-            android:foregroundServiceType="connectedDevice|dataSync" />
+            android:foregroundServiceType="connectedDevice" />
 
     </application>
 </manifest>
