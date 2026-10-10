@@ -67,4 +67,6 @@ dependencies {
 
     // LittleProxy (For robust HTTP proxying & header stripping)
     implementation("org.littleshoot:littleproxy:1.1.2")
+
+implementation("com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava")
 }
