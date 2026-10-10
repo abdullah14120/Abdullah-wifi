@@ -10,7 +10,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlin.random.Random
 
 class MainViewModel : ViewModel() {
-    private val _currentIp = MutableStateFlow("10.0.0.1")
+    // تم تثبيت الـ IP على الافتراضي الخاص بـ Wi-Fi Direct لتجنب تعارض مسارات الإنترنت (DHCP)
+    private val _currentIp = MutableStateFlow("192.168.49.1")
     val currentIp: StateFlow<String> = _currentIp
 
     private val _currentPort = MutableStateFlow(8080)
@@ -35,12 +36,13 @@ class MainViewModel : ViewModel() {
     private val shizukuManager = ShizukuManager()
 
     fun generateCleanSessionParams() {
-        val x = Random.nextInt(1, 255)
-        val y = Random.nextInt(1, 255)
-        _currentIp.value = "10.$x.$y.1"
+        // 1. تأكيد تثبيت الـ IP لتجنب انقطاع التوجيه
+        _currentIp.value = "192.168.49.1"
+        
+        // 2. الحفاظ على عشوائية المنفذ فقط (لحماية الجلسة وتجنب بصمة التطبيق الثابتة)
         _currentPort.value = Random.nextInt(10000, 60000)
         
-        // توليد اسم جهاز/شبكة عشوائي (مثال: Bridge-7X2A)
+        // 3. توليد اسم جهاز/شبكة عشوائي (مثال: Bridge-7X2A)
         val randomString = (1..4)
             .map { "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".random() }
             .joinToString("")
@@ -62,7 +64,7 @@ class MainViewModel : ViewModel() {
                 _networkName.value = name
                 _networkPassword.value = password
                 
-                // 2. تطبيق Shizuku وتغيير IP/MAC
+                // 2. تطبيق Shizuku (تم تعديله مسبقاً للحفاظ على استقرار الواي فاي الأساسي)
                 val isShizukuReady = shizukuManager.setupCleanSessionNetwork(_currentIp.value)
                 
                 // 3. تشغيل البروكسي
