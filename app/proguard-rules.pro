@@ -1,4 +1,8 @@
-# تجاهل تحذيرات المكتبات الاختيارية التي يطلبها LittleProxy و Netty
+# =========================================================
+# 1. تجاهل تحذيرات المكتبات الاختيارية (Optional Dependencies)
+# =========================================================
+
+# قواعد التجاهل السابقة
 -dontwarn com.google.errorprone.annotations.**
 -dontwarn com.google.j2objc.annotations.**
 -dontwarn com.jcraft.jzlib.**
@@ -10,7 +14,21 @@
 -dontwarn org.slf4j.**
 -dontwarn sun.security.**
 
-# الحفاظ على كلاسات LittleProxy و Netty الأساسية لمنع R8 من كسرها أثناء التشفير
+# قواعد التجاهل الجديدة (Protobuf, SCTP, JBoss, CLI, Jetty, etc.)
+-dontwarn com.google.protobuf.**
+-dontwarn com.sun.nio.sctp.**
+-dontwarn gnu.io.**
+-dontwarn org.apache.commons.cli.**
+-dontwarn org.apache.logging.log4j.**
+-dontwarn org.eclipse.jetty.**
+-dontwarn org.jboss.marshalling.**
+-dontwarn org.littleshoot.dnssec4j.**
+
+# =========================================================
+# 2. الحفاظ على كلاسات التطبيق الأساسية (Keep Rules)
+# =========================================================
+
+# الحفاظ على كلاسات LittleProxy و Netty الأساسية لمنع كسرها
 -keep class org.littleshoot.proxy.** { *; }
 -keep class io.netty.** { *; }
 
