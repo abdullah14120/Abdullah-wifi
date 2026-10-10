@@ -19,12 +19,16 @@ class MainViewModel : ViewModel() {
     private val _isSessionActive = MutableStateFlow(false)
     val isSessionActive: StateFlow<Boolean> = _isSessionActive
 
-    // متغيرات جديدة لحفظ بيانات الشبكة
+    // متغيرات حفظ بيانات الشبكة
     private val _networkName = MutableStateFlow("")
     val networkName: StateFlow<String> = _networkName
     
     private val _networkPassword = MutableStateFlow("")
     val networkPassword: StateFlow<String> = _networkPassword
+
+    // متغير حفظ الاسم العشوائي المستهدف
+    private val _targetDeviceName = MutableStateFlow("WiFiBridge-0000")
+    val targetDeviceName: StateFlow<String> = _targetDeviceName
 
     private var wifiDirectManager: WifiDirectManager? = null
     private val proxyManager = ProxyServerManager()
@@ -35,10 +39,22 @@ class MainViewModel : ViewModel() {
         val y = Random.nextInt(1, 255)
         _currentIp.value = "10.$x.$y.1"
         _currentPort.value = Random.nextInt(10000, 60000)
+        
+        // توليد اسم جهاز/شبكة عشوائي (مثال: Bridge-7X2A)
+        val randomString = (1..4)
+            .map { "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".random() }
+            .joinToString("")
+        _targetDeviceName.value = "Bridge-$randomString"
     }
 
     fun startSession(context: Context) {
         wifiDirectManager = WifiDirectManager(context)
+        
+        // 0. تغيير اسم الجهاز أولاً عبر Shizuku
+        shizukuManager.randomizeDeviceName(_targetDeviceName.value)
+        
+        // الانتظار قليلاً ليتمكن النظام من استيعاب الاسم الجديد في قاعدة البيانات
+        Thread.sleep(500)
         
         // 1. إنشاء شبكة الواي فاي
         wifiDirectManager?.startBroadcast(
