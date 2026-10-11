@@ -3,6 +3,7 @@ package com.abdullah.wifibridge.data.network
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.wifi.p2p.WifiP2pManager
+import android.os.Handler
 import android.os.Looper
 
 class WifiDirectManager(context: Context) {
@@ -33,16 +34,17 @@ class WifiDirectManager(context: Context) {
     ) {
         manager?.createGroup(channel, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
-                // الانتظار نصف ثانية لضمان تهيئة النظام للشبكة
-                Thread.sleep(500)
-                manager.requestGroupInfo(channel) { group ->
-                    if (group != null && group.isGroupOwner) {
-                        // إرجاع اسم الشبكة وكلمة المرور
-                        onSuccess(group.networkName, group.passphrase ?: "بدون كلمة مرور")
-                    } else {
-                        onFailure("تم الإنشاء ولكن لم يتم تعيين الجهاز كمضيف.")
+                // استخدام Handler بدلاً من Thread.sleep لمنع تجميد واجهة المستخدم
+                Handler(Looper.getMainLooper()).postDelayed({
+                    manager.requestGroupInfo(channel) { group ->
+                        if (group != null && group.isGroupOwner) {
+                            // إرجاع اسم الشبكة وكلمة المرور
+                            onSuccess(group.networkName, group.passphrase ?: "بدون كلمة مرور")
+                        } else {
+                            onFailure("تم الإنشاء ولكن لم يتم تعيين الجهاز كمضيف.")
+                        }
                     }
-                }
+                }, 500)
             }
             override fun onFailure(reason: Int) {
                 onFailure("فشل البث، كود الخطأ: $reason")
