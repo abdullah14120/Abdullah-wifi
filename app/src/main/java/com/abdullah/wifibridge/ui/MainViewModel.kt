@@ -37,7 +37,6 @@ class MainViewModel : ViewModel() {
     private val proxyManager = ProxyServerManager()
     private val shizukuManager = ShizukuManager()
 
-    // جلب سجلات البروكسي لعرضها في الشاشة
     val proxyLogs: StateFlow<List<String>> = proxyManager.serverLogs
 
     fun generateCleanSessionParams() {
@@ -54,9 +53,9 @@ class MainViewModel : ViewModel() {
         wifiDirectManager = WifiDirectManager(context)
         
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                shizukuManager.randomizeDeviceName(_targetDeviceName.value)
-            }
+            // withContext(Dispatchers.IO) {
+            //     shizukuManager.randomizeDeviceName(_targetDeviceName.value)
+            // }
             
             delay(500)
             
@@ -70,6 +69,7 @@ class MainViewModel : ViewModel() {
                         val isShizukuReady = shizukuManager.setupCleanSessionNetwork(_currentIp.value)
                         
                         if (isShizukuReady) {
+                            // الاستدعاء الآن يتم بشكل صحيح بدون context
                             proxyManager.startServer(_currentPort.value)
                         }
                     }
@@ -84,6 +84,7 @@ class MainViewModel : ViewModel() {
 
     fun stopSession(context: Context) {
         wifiDirectManager?.stopBroadcast()
+        // الاستدعاء هنا أيضاً يتم بدون context
         proxyManager.stopServer()
         _isSessionActive.value = false
         _networkName.value = ""
