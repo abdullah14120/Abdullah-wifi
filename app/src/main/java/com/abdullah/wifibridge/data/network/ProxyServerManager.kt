@@ -33,8 +33,8 @@ class ProxyServerManager {
                     .withAllowLocalOnly(false)
                     .withFiltersSource(object : HttpFiltersSourceAdapter() {
                         override fun filterRequest(originalRequest: HttpRequest, ctx: ChannelHandlerContext): HttpFilters {
-                            // هذا السطر سيكشف لنا إذا كان الهاتف الآخر يصل للبروكسي أم لا
-                            addLog("🌐 طلب قادم: ${originalRequest.uri()}")
+                            // تم التصحيح هنا: استخدام originalRequest.uri كخاصية (Property) بدون أقواس
+                            addLog("🌐 طلب قادم: ${originalRequest.uri}")
                             return object : HttpFiltersAdapter(originalRequest) {
                                 override fun clientToProxyRequest(httpObject: io.netty.handler.codec.http.HttpObject): HttpResponse? {
                                     if (httpObject is HttpRequest) {
