@@ -67,9 +67,9 @@ class MainViewModel : ViewModel() {
                 // 2. تطبيق Shizuku (تم تعديله مسبقاً للحفاظ على استقرار الواي فاي الأساسي)
                 val isShizukuReady = shizukuManager.setupCleanSessionNetwork(_currentIp.value)
                 
-                // 3. تشغيل البروكسي
+                // 3. تشغيل البروكسي وتمرير الـ context لربط الشبكة بنجاح
                 if (isShizukuReady) {
-                    proxyManager.startServer(_currentPort.value)
+                    proxyManager.startServer(_currentPort.value, context)
                 }
                 _isSessionActive.value = true
             },
@@ -80,9 +80,11 @@ class MainViewModel : ViewModel() {
         )
     }
 
-    fun stopSession() {
+    // تم إضافة context هنا كمعامل لاستخدامه في فك ارتباط الشبكة
+    fun stopSession(context: Context) {
         wifiDirectManager?.stopBroadcast()
-        proxyManager.stopServer()
+        // تمرير الـ context لدالة الإيقاف
+        proxyManager.stopServer(context)
         _isSessionActive.value = false
         _networkName.value = ""
         _networkPassword.value = ""
