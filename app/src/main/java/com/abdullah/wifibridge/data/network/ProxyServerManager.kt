@@ -1,6 +1,5 @@
 package com.abdullah.wifibridge.data.network
 
-import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,20 +23,18 @@ class ProxyServerManager {
     private val _serverLogs = MutableStateFlow<List<String>>(emptyList())
     val serverLogs: StateFlow<List<String>> = _serverLogs
 
-    fun startServer(port: Int, context: Context) {
+    // تمت إزالة context: Context من هنا
+    fun startServer(port: Int) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 addLog("⏳ جاري تشغيل البروكسي على المنفذ: $port...")
                 
                 proxyServer = DefaultHttpProxyServer.bootstrap()
                     .withPort(port)
-                    // الاستماع لجميع الواجهات (wlan0 و p2p0)
                     .withAddress(InetSocketAddress("0.0.0.0", port))
-                    // السماح للهاتف الثاني بالاتصال
                     .withAllowLocalOnly(false)
                     .withFiltersSource(object : HttpFiltersSourceAdapter() {
                         override fun filterRequest(originalRequest: HttpRequest, ctx: ChannelHandlerContext): HttpFilters {
-                            // تسجيل أي طلب قادم من الهاتف العميل فور وصوله
                             addLog("🌐 طلب: ${originalRequest.uri}")
                             return object : HttpFiltersAdapter(originalRequest) {
                                 override fun clientToProxyRequest(httpObject: io.netty.handler.codec.http.HttpObject): HttpResponse? {
@@ -64,7 +61,8 @@ class ProxyServerManager {
         }
     }
 
-    fun stopServer(context: Context) {
+    // تمت إزالة context: Context من هنا
+    fun stopServer() {
         proxyServer?.stop()
         proxyServer = null
         _isServerRunning.value = false
