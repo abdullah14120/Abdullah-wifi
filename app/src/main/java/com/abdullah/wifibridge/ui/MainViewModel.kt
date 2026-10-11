@@ -2,11 +2,16 @@ package com.abdullah.wifibridge.ui
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.abdullah.wifibridge.data.network.ProxyServerManager
 import com.abdullah.wifibridge.data.network.WifiDirectManager
 import com.abdullah.wifibridge.data.shizuku.ShizukuManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 class MainViewModel : ViewModel() {
@@ -52,35 +57,41 @@ class MainViewModel : ViewModel() {
     fun startSession(context: Context) {
         wifiDirectManager = WifiDirectManager(context)
         
-        // 0. تغيير اسم الجهاز أولاً عبر Shizuku
-        shizukuManager.randomizeDeviceName(_targetDeviceName.value)
-        
-        // الانتظار قليلاً ليتمكن النظام من استيعاب الاسم الجديد في قاعدة البيانات
-        Thread.sleep(500)
-        
-        // 1. إنشاء شبكة الواي فاي
-        wifiDirectManager?.startBroadcast(
-            onSuccess = { name, password ->
-                _networkName.value = name
-                _networkPassword.value = password
-                
-                // 2. تطبيق Shizuku (تم تعديله مسبقاً للحفاظ على استقرار الواي فاي الأساسي)
-                val isShizukuReady = shizukuManager.setupCleanSessionNetwork(_currentIp.value)
-                
-                // 3. تشغيل البروكسي وتمرير الـ context لربط الشبكة بنجاح
-                if (isShizukuReady) {
-                    proxyManager.startServer(_currentPort.value, context)
-                }
-                _isSessionActive.value = true
-            },
-            onFailure = { error ->
-                println("Error starting network: $error")
-                _isSessionActive.value = false
+        // تشغيل العمليات في الكوروتين (Coroutine) لمنع تجميد واجهة المستخدم
+        viewModelScope.launch {
+            // 0. تغيير اسم الجهاز عبر Shizuku (في مسار IO للخلفية لأنه أمر Shell)
+            withContext(Dispatchers.IO) {
+                shizukuManager.randomizeDeviceName(_targetDeviceName.value)
             }
-        )
+            
+            // الانتظار قليلاً باستخدام delay الآمنة ليتمكن النظام من استيعاب الاسم الجديد
+            delay(500)
+            
+            // 1. إنشاء شبكة الواي فاي
+            wifiDirectManager?.startBroadcast(
+                onSuccess = { name, password ->
+                    _networkName.value = name
+                    _networkPassword.value = password
+                    _isSessionActive.value = true // تحديث الواجهة فوراً
+                    
+                    // 2. تطبيق Shizuku وتشغيل البروكسي في مسار الخلفية
+                    viewModelScope.launch(Dispatchers.IO) {
+                        val isShizukuReady = shizukuManager.setupCleanSessionNetwork(_currentIp.value)
+                        
+                        // 3. تشغيل البروكسي وتمرير الـ context لربط الشبكة بنجاح
+                        if (isShizukuReady) {
+                            proxyManager.startServer(_currentPort.value, context)
+                        }
+                    }
+                },
+                onFailure = { error ->
+                    println("Error starting network: $error")
+                    _isSessionActive.value = false
+                }
+            )
+        }
     }
 
-    // تم إضافة context هنا كمعامل لاستخدامه في فك ارتباط الشبكة
     fun stopSession(context: Context) {
         wifiDirectManager?.stopBroadcast()
         // تمرير الـ context لدالة الإيقاف
