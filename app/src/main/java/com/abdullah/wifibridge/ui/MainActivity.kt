@@ -8,13 +8,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Color
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
@@ -41,10 +45,10 @@ fun MainScreen(viewModel: MainViewModel) {
     val isActive by viewModel.isSessionActive.collectAsState()
     val netName by viewModel.networkName.collectAsState()
     val netPass by viewModel.networkPassword.collectAsState()
+    val logs by viewModel.proxyLogs.collectAsState()
     
     val context = LocalContext.current
 
-    // مشغل طلب الصلاحيات برمجياً
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -56,10 +60,10 @@ fun MainScreen(viewModel: MainViewModel) {
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.Top
     ) {
         Text(text = "WiFi Bridge Pro", style = MaterialTheme.typography.headlineMedium)
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         
         Card(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -68,7 +72,6 @@ fun MainScreen(viewModel: MainViewModel) {
                 Text("Gateway IP: $ip")
                 Text("Proxy Port: $port")
                 
-                // ظهور بيانات الشبكة فقط عند تفعيلها
                 if (isActive && netName.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Text("SSID: $netName", color = MaterialTheme.colorScheme.primary)
@@ -77,23 +80,13 @@ fun MainScreen(viewModel: MainViewModel) {
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = { viewModel.generateCleanSessionParams() },
-            enabled = !isActive
-        ) {
-            Text("Generate Clean Session")
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         Button(
             onClick = {
                 if (isActive) {
-                    // التعديل هنا: تم تمرير الـ context لإيقاف البث وفك ارتباط الشبكة
                     viewModel.stopSession(context)
                 } else {
-                    // طلب الصلاحيات بناءً على إصدار الأندرويد قبل التشغيل
                     val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.NEARBY_WIFI_DEVICES)
                     } else {
@@ -108,6 +101,39 @@ fun MainScreen(viewModel: MainViewModel) {
             modifier = Modifier.fillMaxWidth().height(56.dp)
         ) {
             Text(if (isActive) "Stop Broadcast" else "Start Clean Session")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Button(
+            onClick = { viewModel.generateCleanSessionParams() },
+            enabled = !isActive,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Generate Clean Session")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // صندوق مراقبة السجلات الحية
+        Text("Live Proxy Logs:", style = MaterialTheme.typography.titleSmall)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .background(Color.Black.copy(alpha = 0.05f))
+                .padding(8.dp)
+        ) {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(logs) { log ->
+                    Text(
+                        text = log,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (log.contains("خطأ") || log.contains("ERROR")) Color.Red else Color.DarkGray,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+            }
         }
     }
 }
