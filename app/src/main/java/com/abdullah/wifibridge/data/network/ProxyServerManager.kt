@@ -1,7 +1,14 @@
 package com.abdullah.wifibridge.data.network
 
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.Build
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import org.littleshoot.proxy.HttpProxyServer
 import org.littleshoot.proxy.impl.DefaultHttpProxyServer
 import org.littleshoot.proxy.HttpFilters
@@ -11,9 +18,6 @@ import io.netty.handler.codec.http.HttpRequest
 import io.netty.handler.codec.http.HttpResponse
 import io.netty.channel.ChannelHandlerContext
 import java.net.InetSocketAddress
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 class ProxyServerManager {
     private var proxyServer: HttpProxyServer? = null
@@ -23,14 +27,34 @@ class ProxyServerManager {
     private val _serverLogs = MutableStateFlow<List<String>>(emptyList())
     val serverLogs: StateFlow<List<String>> = _serverLogs
 
-    fun startServer(port: Int) {
-        // نقل عملية تشغيل الخادم إلى مسار خلفي (IO Thread) لتجنب انهيار التطبيق
+    // تم إضافة context هنا للوصول إلى مدير الشبكات
+    fun startServer(port: Int, context: Context) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                // ==========================================
+                // الخدعة السحرية المستخرجة من تطبيق NetShare
+                // ==========================================
+                val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                val activeNetwork = connectivityManager.activeNetwork
+                
+                if (activeNetwork != null) {
+                    val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork)
+                    if (capabilities != null && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                        // إجبار التطبيق (والبروكسي) على توجيه كل طلباته للخارج عبر الإنترنت الحقيقي فقط
+                        if (Build.VERSION.SDK_INT >= Build.VERSION.SDK_INT) {
+                            connectivityManager.bindProcessToNetwork(activeNetwork)
+                            addLog("Network successfully bound to active internet connection.")
+                        }
+                    }
+                } else {
+                    addLog("Warning: No active internet network found to bind to.")
+                }
+                // ==========================================
+
                 proxyServer = DefaultHttpProxyServer.bootstrap()
                     .withPort(port)
                     .withAddress(InetSocketAddress("0.0.0.0", port))
-                    .withAllowLocalOnly(false) // السماح للهواتف الأخرى بالاتصال
+                    .withAllowLocalOnly(false)
                     .withFiltersSource(object : HttpFiltersSourceAdapter() {
                         override fun filterRequest(originalRequest: HttpRequest, ctx: ChannelHandlerContext): HttpFilters {
                             return object : HttpFiltersAdapter(originalRequest) {
@@ -48,7 +72,6 @@ class ProxyServerManager {
                     })
                     .start()
                 
-                // تحديث حالة الواجهة بعد نجاح التشغيل
                 _isServerRunning.value = true
                 addLog("Proxy started on port: $port in Stealth Mode")
             } catch (e: Exception) {
@@ -59,7 +82,13 @@ class ProxyServerManager {
         }
     }
 
-    fun stopServer() {
+    fun stopServer(context: Context) {
+        // فك ارتباط الشبكة عند الإغلاق (لتجنب تعليق النظام)
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION.SDK_INT) {
+            connectivityManager.bindProcessToNetwork(null)
+        }
+
         proxyServer?.stop()
         proxyServer = null
         _isServerRunning.value = false
