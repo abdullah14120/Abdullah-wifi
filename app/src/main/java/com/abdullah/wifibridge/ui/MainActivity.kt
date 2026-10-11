@@ -90,7 +90,8 @@ fun MainScreen(viewModel: MainViewModel) {
         Button(
             onClick = {
                 if (isActive) {
-                    viewModel.stopSession()
+                    // التعديل هنا: تم تمرير الـ context لإيقاف البث وفك ارتباط الشبكة
+                    viewModel.stopSession(context)
                 } else {
                     // طلب الصلاحيات بناءً على إصدار الأندرويد قبل التشغيل
                     val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
