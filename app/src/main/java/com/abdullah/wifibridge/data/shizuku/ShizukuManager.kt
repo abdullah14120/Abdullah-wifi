@@ -2,6 +2,8 @@ package com.abdullah.wifibridge.data.shizuku
 
 import android.content.pm.PackageManager
 import rikka.shizuku.Shizuku
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 class ShizukuManager {
 
@@ -61,6 +63,9 @@ class ShizukuManager {
         }
     }
 
+    /**
+     * قراءة الماك أدرس الفعلي من عمق النظام للتأكد من نجاح تغييره
+     */
     fun getActualMacAddress(): String {
         if (!hasPermission()) return "غير متاح (بدون صلاحية)"
         
@@ -78,12 +83,15 @@ class ShizukuManager {
                     else -> null
                 } as? Process
                 
-                // قراءة المخرجات (الماك أدرس) من سطر الأوامر
-                val reader = java.io.BufferedReader(java.io.InputStreamReader(process?.inputStream))
-                val actualMac = reader.readLine()?.trim() ?: "غير معروف"
-                process?.waitFor()
-                
-                actualMac
+                // الحل هنا: التأكد من أن العملية ليست فارغة (Null Safety) قبل محاولة القراءة
+                if (process != null) {
+                    val reader = BufferedReader(InputStreamReader(process.inputStream))
+                    val actualMac = reader.readLine()?.trim() ?: "غير معروف"
+                    process.waitFor()
+                    actualMac
+                } else {
+                    "فشل إنشاء العملية"
+                }
             } else {
                 "فشل استدعاء Shizuku"
             }
@@ -92,4 +100,4 @@ class ShizukuManager {
             "خطأ في القراءة"
         }
     }
-}  
+}
