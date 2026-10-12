@@ -1,6 +1,7 @@
 package com.abdullah.wifibridge.ui
 
 import android.content.Context
+import android.content.pm.PackageManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.abdullah.wifibridge.data.network.KeepAliveManager
@@ -12,6 +13,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import rikka.shizuku.Shizuku
 import kotlin.random.Random
 
 class MainViewModel : ViewModel() {
@@ -69,48 +71,35 @@ class MainViewModel : ViewModel() {
                     
                     proxyManager.startServer(_currentPort.value)
                     
-                    viewModelScope.launch(Dispatchers.IO) {
-                        // 1. الفحص الاستباقي لحالة Shizuku
-                        proxyManager.addLog("🔍 جاري فحص اتصال Shizuku...")
-                        
-                        val isShizukuRunning = shizukuManager.isShizukuAvailable()
-                        val hasShizukuPermission = shizukuManager.hasPermission()
-                        
-                        if (!isShizukuRunning) {
-                            proxyManager.addLog("❌ خطأ: خدمة Shizuku غير تعمل في هاتفك. يرجى تشغيلها من تطبيق Shizuku أولاً.")
-                            return@launch // إيقاف تنفيذ أوامر التخفي
+                    // الفحص الجديد المبني على هندسة PixelIMS
+                    val shizukuStatus = shizukuManager.checkShizukuStatus()
+                    
+                    when (shizukuStatus) {
+                        -1 -> {
+                            proxyManager.addLog("❌ خطأ: خدمة Shizuku غير متصلة. يرجى فتح تطبيق Shizuku وتشغيله أولاً.")
                         }
-                        
-                        if (!hasShizukuPermission) {
-                            proxyManager.addLog("⚠️ تنبيه: التطبيق لا يملك صلاحية Shizuku. جاري طلب الصلاحية...")
-                            // هذا سيظهر نافذة منبثقة للمستخدم تطلب الصلاحية
-                            shizukuManager.requestPermission(100) 
+                        0 -> {
+                            proxyManager.addLog("⚠️ التطبيق يحتاج صلاحية Shizuku. يرجى الموافقة على النافذة المنبثقة...")
                             
-                            // الانتظار قليلاً لعل المستخدم يوافق
-                            delay(3000)
-                            
-                            if (!shizukuManager.hasPermission()) {
-                                proxyManager.addLog("❌ خطأ: لم يتم منح صلاحية Shizuku. لا يمكن تطبيق قواعد التخفي.")
-                                return@launch
+                            // استخدام المستمع الصحيح بدلاً من التأخير العشوائي
+                            val listener = object : Shizuku.OnRequestPermissionResultListener {
+                                override fun onRequestPermissionResult(requestCode: Int, grantResult: Int) {
+                                    if (grantResult == PackageManager.PERMISSION_GRANTED) {
+                                        proxyManager.addLog("✅ تم منح الصلاحية! جاري تطبيق قواعد التخفي...")
+                                        executeShizukuCommands()
+                                    } else {
+                                        proxyManager.addLog("❌ تم رفض الصلاحية من قبل المستخدم.")
+                                    }
+                                    // إزالة المستمع بعد الانتهاء لتنظيف الذاكرة
+                                    Shizuku.removeRequestPermissionResultListener(this)
+                                }
                             }
+                            Shizuku.addRequestPermissionResultListener(listener)
+                            shizukuManager.requestPermission(100)
                         }
-                        
-                        // 2. إذا وصلنا إلى هنا، فهذا يعني أن Shizuku يعمل والصلاحية ممنوحة
-                        proxyManager.addLog("✅ Shizuku متصل ومصرح به.")
-                        proxyManager.addLog("⏳ جاري تطبيق قواعد التخفي (تشفير DNS)...")
-                        
-                        val isShizukuSuccess = shizukuManager.setupCleanSessionNetwork(
-                            newIp = _currentIp.value, 
-                            newMac = _currentMac.value,
-                            dnsIp = _currentDns.value
-                        )
-                        
-                        delay(1000)
-                        
-                        if (isShizukuSuccess) {
-                            proxyManager.addLog("✅ نجاح: تم توجيه طلبات DNS إجبارياً إلى ${_currentDns.value}")
-                        } else {
-                            proxyManager.addLog("❌ فشل في تطبيق أوامر iptables (قد يكون النظام يمنع هذا الأمر).")
+                        1 -> {
+                            proxyManager.addLog("✅ Shizuku متصل ومصرح به مسبقاً.")
+                            executeShizukuCommands()
                         }
                     }
                 },
@@ -120,6 +109,27 @@ class MainViewModel : ViewModel() {
                     keepAliveManager?.releaseWakeLock()
                 }
             )
+        }
+    }
+
+    // دالة منفصلة لتنفيذ الأوامر بعد التأكد من الصلاحية 100%
+    private fun executeShizukuCommands() {
+        viewModelScope.launch(Dispatchers.IO) {
+            proxyManager.addLog("⏳ جاري توجيه طلبات DNS وتشفيرها...")
+            
+            val isShizukuSuccess = shizukuManager.setupCleanSessionNetwork(
+                newIp = _currentIp.value, 
+                newMac = _currentMac.value,
+                dnsIp = _currentDns.value
+            )
+            
+            delay(1000)
+            
+            if (isShizukuSuccess) {
+                proxyManager.addLog("✅ نجاح: تم توجيه طلبات DNS إجبارياً إلى ${_currentDns.value}")
+            } else {
+                proxyManager.addLog("❌ فشل في تطبيق أوامر iptables.")
+            }
         }
     }
 
