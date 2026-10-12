@@ -60,11 +60,7 @@ class ShizukuManager {
             false
         }
     }
-}
 
-/**
-     * قراءة الماك أدرس الفعلي من عمق النظام للتأكد من نجاح تغييره
-     */
     fun getActualMacAddress(): String {
         if (!hasPermission()) return "غير متاح (بدون صلاحية)"
         
