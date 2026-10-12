@@ -18,30 +18,47 @@ class ShizukuManager {
     }
 
     /**
-     * تم التعديل: إيقاف تغيير اسم الجهاز يدوياً.
-     * سيقوم النظام الآن بتوليد اسم شبكة (SSID) وكلمة مرور (Password) تلقائياً وآمناً لتجنب أي تعارض في المصادقة.
+     * إعداد الجلسة النظيفة: تغيير MAC، IP، وتوجيه الـ DNS
      */
-    fun randomizeDeviceName(newName: String): Boolean {
-        if (!hasPermission()) return false
-
-        println("تم تخطي تغيير اسم الجهاز لتجنب تعارض المصادقة، سيتم الاعتماد على توليد النظام.")
-        
-        // إرجاع true مباشرة لكي يكمل التطبيق عمله بسلاسة دون تجميد أو أخطاء
-        return true
-    }
-
-    /**
-     * إعداد الجلسة النظيفة.
-     * تم إيقاف أوامر ifconfig لأنها تفصل اتصال الواي فاي الأساسي في أجهزة MediaTek وما شابهها.
-     */
-    fun setupCleanSessionNetwork(newIp: String): Boolean {
+    fun setupCleanSessionNetwork(newIp: String, newMac: String, dnsIp: String): Boolean {
         if (!hasPermission()) return false
         
-        // بما أننا ثبتنا الـ IP على 192.168.49.1 في ViewModel
-        // وبما أن الإنترنت يأتي من اتصال واي فاي آخر، سنتخطى أوامر ifconfig لتجنب فصل الشريحة.
-        // نظام أندرويد 10 وما فوق سيقوم تلقائياً بتوليد MAC عشوائي جديد لـ P2P في كل مرة يتم فيها البث.
-        
-        println("تم تخطي تعديل MAC/IP يدوياً للحفاظ على استقرار شبكة الواي فاي الأساسية.")
-        return true
+        return try {
+            val commands = """
+                # 1. تغيير الماك أدرس لشبكة البث (P2P)
+                ip link set dev p2p0 down
+                ip link set dev p2p0 address $newMac
+                ip link set dev p2p0 up
+                
+                # 2. تغيير الآي بي أدرس
+                ifconfig p2p0 $newIp netmask 255.255.255.0
+                
+                # 3. توجيه جميع طلبات الـ DNS القادمة من العميل إلى الـ DNS المختار (تشفير وإخفاء)
+                iptables -t nat -A PREROUTING -i p2p0 -p udp --dport 53 -j DNAT --to-destination $dnsIp:53
+                iptables -t nat -A PREROUTING -i p2p0 -p tcp --dport 53 -j DNAT --to-destination $dnsIp:53
+            """.trimIndent()
+
+            val commandArray = arrayOf("sh", "-c", commands)
+            val shizukuClass = Shizuku::class.java
+            val processMethod = shizukuClass.methods.firstOrNull { it.name == "newProcess" }
+            
+            if (processMethod != null) {
+                val process = when (processMethod.parameterTypes.size) {
+                    1 -> processMethod.invoke(null, commandArray)
+                    2 -> processMethod.invoke(null, commandArray, null)
+                    3 -> processMethod.invoke(null, commandArray, null, null)
+                    else -> null
+                } as? Process
+                
+                val exitCode = process?.waitFor() ?: -1
+                println("Shizuku Clean Session Setup Exit Code: $exitCode")
+                exitCode == 0
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
     }
 }
