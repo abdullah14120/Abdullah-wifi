@@ -37,24 +37,19 @@ class MainViewModel : ViewModel() {
     private val proxyManager = ProxyServerManager()
     private val shizukuManager = ShizukuManager()
     
-    // تعريف المتغير هنا لحل مشكلة Unresolved reference
     private var keepAliveManager: KeepAliveManager? = null
 
     val proxyLogs: StateFlow<List<String>> = proxyManager.serverLogs
 
     fun generateCleanSessionParams() {
-        // العودة للـ IP القياسي المضمون 100% في أندرويد لشبكات P2P
         _currentIp.value = "192.168.49.1"
-        
         _currentPort.value = Random.nextInt(10000, 60000)
         
-        // إبقاء توليد الماك (نمرره لتجنب أخطاء المتغيرات رغم عدم استخدامه لتغيير الماك فعلياً)
         val macBytes = ByteArray(5)
         Random.nextBytes(macBytes)
         _currentMac.value = String.format("02:%02x:%02x:%02x:%02x:%02x", 
             macBytes[0], macBytes[1], macBytes[2], macBytes[3], macBytes[4])
 
-        // إبقاء اختيار DNS عشوائي
         _currentDns.value = listOf("1.1.1.1", "8.8.8.8").random()
     }
 
@@ -74,8 +69,34 @@ class MainViewModel : ViewModel() {
                     
                     proxyManager.startServer(_currentPort.value)
                     
-                    // تنفيذ أوامر التخفي (تشفير DNS فقط) والتحقق منها
                     viewModelScope.launch(Dispatchers.IO) {
+                        // 1. الفحص الاستباقي لحالة Shizuku
+                        proxyManager.addLog("🔍 جاري فحص اتصال Shizuku...")
+                        
+                        val isShizukuRunning = shizukuManager.isShizukuAvailable()
+                        val hasShizukuPermission = shizukuManager.hasPermission()
+                        
+                        if (!isShizukuRunning) {
+                            proxyManager.addLog("❌ خطأ: خدمة Shizuku غير تعمل في هاتفك. يرجى تشغيلها من تطبيق Shizuku أولاً.")
+                            return@launch // إيقاف تنفيذ أوامر التخفي
+                        }
+                        
+                        if (!hasShizukuPermission) {
+                            proxyManager.addLog("⚠️ تنبيه: التطبيق لا يملك صلاحية Shizuku. جاري طلب الصلاحية...")
+                            // هذا سيظهر نافذة منبثقة للمستخدم تطلب الصلاحية
+                            shizukuManager.requestPermission(100) 
+                            
+                            // الانتظار قليلاً لعل المستخدم يوافق
+                            delay(3000)
+                            
+                            if (!shizukuManager.hasPermission()) {
+                                proxyManager.addLog("❌ خطأ: لم يتم منح صلاحية Shizuku. لا يمكن تطبيق قواعد التخفي.")
+                                return@launch
+                            }
+                        }
+                        
+                        // 2. إذا وصلنا إلى هنا، فهذا يعني أن Shizuku يعمل والصلاحية ممنوحة
+                        proxyManager.addLog("✅ Shizuku متصل ومصرح به.")
                         proxyManager.addLog("⏳ جاري تطبيق قواعد التخفي (تشفير DNS)...")
                         
                         val isShizukuSuccess = shizukuManager.setupCleanSessionNetwork(
@@ -84,13 +105,12 @@ class MainViewModel : ViewModel() {
                             dnsIp = _currentDns.value
                         )
                         
-                        // ننتظر ثانية واحدة لكي يستوعب النظام التغييرات
                         delay(1000)
                         
                         if (isShizukuSuccess) {
                             proxyManager.addLog("✅ نجاح: تم توجيه طلبات DNS إجبارياً إلى ${_currentDns.value}")
                         } else {
-                            proxyManager.addLog("❌ فشل في تطبيق أوامر iptables.")
+                            proxyManager.addLog("❌ فشل في تطبيق أوامر iptables (قد يكون النظام يمنع هذا الأمر).")
                         }
                     }
                 },
@@ -106,8 +126,6 @@ class MainViewModel : ViewModel() {
     fun stopSession(context: Context) {
         wifiDirectManager?.stopBroadcast()
         proxyManager.stopServer()
-        
-        // إيقاف الـ Wakelock عند إنهاء الجلسة
         keepAliveManager?.releaseWakeLock()
         
         _isSessionActive.value = false
