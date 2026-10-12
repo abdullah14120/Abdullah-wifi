@@ -71,31 +71,39 @@ class MainViewModel : ViewModel() {
                     
                     proxyManager.startServer(_currentPort.value)
                     
-                    // الفحص الجديد المبني على هندسة PixelIMS
                     val shizukuStatus = shizukuManager.checkShizukuStatus()
                     
                     when (shizukuStatus) {
-                        -1 -> {
-                            proxyManager.addLog("❌ خطأ: خدمة Shizuku غير متصلة. يرجى فتح تطبيق Shizuku وتشغيله أولاً.")
-                        }
-                        0 -> {
-                            proxyManager.addLog("⚠️ التطبيق يحتاج صلاحية Shizuku. يرجى الموافقة على النافذة المنبثقة...")
+                        -1, -2 -> {
+                            proxyManager.addLog("⏳ جاري انتظار إيقاظ Shizuku (قد يستغرق بضع ثوانٍ)...")
                             
-                            // استخدام المستمع الصحيح بدلاً من التأخير العشوائي
-                            val listener = object : Shizuku.OnRequestPermissionResultListener {
-                                override fun onRequestPermissionResult(requestCode: Int, grantResult: Int) {
-                                    if (grantResult == PackageManager.PERMISSION_GRANTED) {
-                                        proxyManager.addLog("✅ تم منح الصلاحية! جاري تطبيق قواعد التخفي...")
+                            // مستمع التقاط الاتصال
+                            val binderListener = object : Shizuku.OnBinderReceivedListener {
+                                override fun onBinderReceived() {
+                                    proxyManager.addLog("✅ تم التقاط إشارة Shizuku بنجاح!")
+                                    Shizuku.removeBinderReceivedListener(this)
+                                    
+                                    if (shizukuManager.checkShizukuStatus() == 1) {
                                         executeShizukuCommands()
                                     } else {
-                                        proxyManager.addLog("❌ تم رفض الصلاحية من قبل المستخدم.")
+                                        requestShizukuPermissionAsync()
                                     }
-                                    // إزالة المستمع بعد الانتهاء لتنظيف الذاكرة
-                                    Shizuku.removeRequestPermissionResultListener(this)
                                 }
                             }
-                            Shizuku.addRequestPermissionResultListener(listener)
-                            shizukuManager.requestPermission(100)
+                            
+                            Shizuku.addBinderReceivedListener(binderListener)
+                            
+                            // مهلة 5 ثوانٍ للإلغاء إذا لم يتصل
+                            viewModelScope.launch {
+                                delay(5000)
+                                if (shizukuManager.checkShizukuStatus() < 0) {
+                                    proxyManager.addLog("❌ فشل الاتصال. يرجى تفعيل (التشغيل التلقائي) للتطبيق من إعدادات الهاتف.")
+                                    Shizuku.removeBinderReceivedListener(binderListener)
+                                }
+                            }
+                        }
+                        0 -> {
+                            requestShizukuPermissionAsync()
                         }
                         1 -> {
                             proxyManager.addLog("✅ Shizuku متصل ومصرح به مسبقاً.")
@@ -112,7 +120,25 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    // دالة منفصلة لتنفيذ الأوامر بعد التأكد من الصلاحية 100%
+    // دالة منفصلة لطلب الصلاحية بشكل غير متزامن
+    private fun requestShizukuPermissionAsync() {
+        proxyManager.addLog("⚠️ التطبيق يحتاج صلاحية Shizuku. يرجى الموافقة على النافذة المنبثقة...")
+        val listener = object : Shizuku.OnRequestPermissionResultListener {
+            override fun onRequestPermissionResult(requestCode: Int, grantResult: Int) {
+                if (grantResult == PackageManager.PERMISSION_GRANTED) {
+                    proxyManager.addLog("✅ تم منح الصلاحية! جاري تطبيق قواعد التخفي...")
+                    executeShizukuCommands()
+                } else {
+                    proxyManager.addLog("❌ تم رفض الصلاحية من قبل المستخدم.")
+                }
+                Shizuku.removeRequestPermissionResultListener(this)
+            }
+        }
+        Shizuku.addRequestPermissionResultListener(listener)
+        shizukuManager.requestPermission(100)
+    }
+
+    // دالة منفصلة لتنفيذ الأوامر
     private fun executeShizukuCommands() {
         viewModelScope.launch(Dispatchers.IO) {
             proxyManager.addLog("⏳ جاري توجيه طلبات DNS وتشفيرها...")
