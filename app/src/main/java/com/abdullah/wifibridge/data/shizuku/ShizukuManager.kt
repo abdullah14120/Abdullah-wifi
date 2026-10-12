@@ -8,18 +8,19 @@ class ShizukuManager {
     /**
      * 1: Shizuku يعمل والصلاحية ممنوحة
      * 0: Shizuku يعمل ولكن يحتاج صلاحية
-     * -1: Shizuku لا يعمل أو غير متصل
+     * -1: البيندر ميت (غير متصل)
+     * -2: خطأ برمجي (النظام يمنع الاتصال)
      */
     fun checkShizukuStatus(): Int {
         return try {
-            if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                1
+            if (Shizuku.pingBinder()) {
+                if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) 1 else 0
             } else {
-                0
+                -1 
             }
         } catch (e: Exception) {
-            // إذا أرجع النظام IllegalStateException فهذا يعني أن الـ Provider لم يلتقط الخدمة
-            -1 
+            e.printStackTrace()
+            -2
         }
     }
 
@@ -31,11 +32,7 @@ class ShizukuManager {
         }
     }
 
-    /**
-     * إعداد الجلسة النظيفة: توجيه الـ DNS 
-     */
     fun setupCleanSessionNetwork(newIp: String, newMac: String, dnsIp: String): Boolean {
-        // فحص سريع للتأكد أن الصلاحية موجودة
         if (checkShizukuStatus() != 1) return false
         
         return try {
