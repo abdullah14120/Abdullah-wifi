@@ -48,7 +48,7 @@ class MainViewModel : ViewModel() {
         
         _currentPort.value = Random.nextInt(10000, 60000)
         
-        // إبقاء توليد الماك الآمن
+        // إبقاء توليد الماك (نمرره لتجنب أخطاء المتغيرات رغم عدم استخدامه لتغيير الماك فعلياً)
         val macBytes = ByteArray(5)
         Random.nextBytes(macBytes)
         _currentMac.value = String.format("02:%02x:%02x:%02x:%02x:%02x", 
@@ -74,12 +74,12 @@ class MainViewModel : ViewModel() {
                     
                     proxyManager.startServer(_currentPort.value)
                     
-                    // تنفيذ أوامر التخفي والتحقق منها
+                    // تنفيذ أوامر التخفي (تشفير DNS فقط) والتحقق منها
                     viewModelScope.launch(Dispatchers.IO) {
-                        proxyManager.addLog("⏳ جاري تطبيق أوامر التخفي (MAC & DNS)...")
+                        proxyManager.addLog("⏳ جاري تطبيق قواعد التخفي (تشفير DNS)...")
                         
                         val isShizukuSuccess = shizukuManager.setupCleanSessionNetwork(
-                            newIp = _currentIp.value, // أعدناه إلى 192.168.49.1 سابقاً
+                            newIp = _currentIp.value, 
                             newMac = _currentMac.value,
                             dnsIp = _currentDns.value
                         )
@@ -88,19 +88,9 @@ class MainViewModel : ViewModel() {
                         delay(1000)
                         
                         if (isShizukuSuccess) {
-                            // قراءة الماك الفعلي بعد التعديل
-                            val actualMac = shizukuManager.getActualMacAddress()
-                            
-                            // التحقق والمطابقة
-                            if (actualMac.equals(_currentMac.value, ignoreCase = true)) {
-                                proxyManager.addLog("✅ نجاح: تم تغيير الماك أدرس إلى $actualMac")
-                            } else {
-                                proxyManager.addLog("⚠️ تحذير: الماك الحالي هو $actualMac (لم يتطابق مع المطلوب)")
-                            }
-                            
-                            proxyManager.addLog("✅ نجاح: تم توجيه DNS إجبارياً إلى ${_currentDns.value}")
+                            proxyManager.addLog("✅ نجاح: تم توجيه طلبات DNS إجبارياً إلى ${_currentDns.value}")
                         } else {
-                            proxyManager.addLog("❌ فشل في تطبيق أوامر التخفي (تأكد من صلاحيات Shizuku).")
+                            proxyManager.addLog("❌ فشل في تطبيق أوامر iptables.")
                         }
                     }
                 },
