@@ -1,6 +1,7 @@
 package com.abdullah.wifibridge.ui
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -19,9 +20,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
+// استيراد Shizuku
+import rikka.shizuku.Shizuku
+import com.abdullah.wifibridge.data.shizuku.ShizukuManager
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
+    // تعريف مدير Shizuku للفحص الأولي
+    private val shizukuManager = ShizukuManager()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,7 +37,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MainScreen(viewModel)
+                    MainScreen(viewModel, shizukuManager)
                 }
             }
         }
@@ -39,7 +45,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun MainScreen(viewModel: MainViewModel) {
+fun MainScreen(viewModel: MainViewModel, shizukuManager: ShizukuManager) {
     val ip by viewModel.currentIp.collectAsState()
     val port by viewModel.currentPort.collectAsState()
     val isActive by viewModel.isSessionActive.collectAsState()
@@ -48,6 +54,18 @@ fun MainScreen(viewModel: MainViewModel) {
     val logs by viewModel.proxyLogs.collectAsState()
     
     val context = LocalContext.current
+
+    // التأثير الجانبي الذي يعمل مرة واحدة عند فتح الشاشة
+    LaunchedEffect(Unit) {
+        val status = shizukuManager.checkShizukuStatus()
+        if (status == -1) {
+            // إضافة سجل يفيد بأن التطبيق ينتظر Shizuku
+            // يمكنك ترك هذا كتحذير صامت للمستخدم
+        } else if (status == 0) {
+            // إذا كان يعمل ولكن لا يملك صلاحية، نطلبها فور فتح التطبيق
+            shizukuManager.requestPermission(200)
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
