@@ -30,8 +30,7 @@ class ShizukuManager {
                 ip link set dev p2p0 address $newMac
                 ip link set dev p2p0 up
                 
-                # 2. تغيير الآي بي أدرس
-                ifconfig p2p0 $newIp netmask 255.255.255.0
+                # 2. تم إيقاف أمر ifconfig هنا للعودة للاستقرار
                 
                 # 3. توجيه جميع طلبات الـ DNS القادمة من العميل إلى الـ DNS المختار (تشفير وإخفاء)
                 iptables -t nat -A PREROUTING -i p2p0 -p udp --dport 53 -j DNAT --to-destination $dnsIp:53
