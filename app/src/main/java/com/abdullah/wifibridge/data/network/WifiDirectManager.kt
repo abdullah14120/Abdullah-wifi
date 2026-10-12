@@ -18,20 +18,26 @@ class WifiDirectManager(context: Context) {
         onSuccess: (networkName: String, password: String) -> Unit,
         onFailure: (String) -> Unit
     ) {
-        if (manager == null || channel == null) {
+        val currentManager = manager
+        val currentChannel = channel
+
+        // التأكد من أن المدير والقناة ليسا فارغين لإرضاء مترجم Kotlin
+        if (currentManager == null || currentChannel == null) {
             onFailure("Wi-Fi Direct غير مدعوم في هذا الجهاز")
             return
         }
 
         // إزالة أي شبكة معلقة أولاً لتجنب التعارض
-        manager.removeGroup(channel, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() = createNewGroup(onSuccess, onFailure)
-            override fun onFailure(reason: Int) = createNewGroup(onSuccess, onFailure)
+        currentManager.removeGroup(currentChannel, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() = createNewGroup(currentManager, currentChannel, onSuccess, onFailure)
+            override fun onFailure(reason: Int) = createNewGroup(currentManager, currentChannel, onSuccess, onFailure)
         })
     }
 
     @SuppressLint("MissingPermission")
     private fun createNewGroup(
+        currentManager: WifiP2pManager,
+        currentChannel: WifiP2pManager.Channel,
         onSuccess: (String, String) -> Unit,
         onFailure: (String) -> Unit
     ) {
@@ -47,7 +53,7 @@ class WifiDirectManager(context: Context) {
                 .setPassphrase(password)
                 .build()
 
-            manager?.createGroup(channel, config, object : WifiP2pManager.ActionListener {
+            currentManager.createGroup(currentChannel, config, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() {
                     // تم البث بنجاح بالإعدادات التي فرضناها نحن
                     onSuccess(networkName, password)
@@ -58,10 +64,10 @@ class WifiDirectManager(context: Context) {
             })
         } else {
             // الطريقة الكلاسيكية للأجهزة القديمة
-            manager?.createGroup(channel, object : WifiP2pManager.ActionListener {
+            currentManager.createGroup(currentChannel, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() {
                     Handler(Looper.getMainLooper()).postDelayed({
-                        manager.requestGroupInfo(channel) { group ->
+                        currentManager.requestGroupInfo(currentChannel) { group ->
                             if (group != null && group.isGroupOwner) {
                                 onSuccess(group.networkName, group.passphrase ?: "12345678")
                             } else {
@@ -78,6 +84,10 @@ class WifiDirectManager(context: Context) {
     }
 
     fun stopBroadcast() {
-        manager?.removeGroup(channel, null)
+        val currentManager = manager
+        val currentChannel = channel
+        if (currentManager != null && currentChannel != null) {
+            currentManager.removeGroup(currentChannel, null)
+        }
     }
 }
