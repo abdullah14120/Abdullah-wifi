@@ -61,3 +61,38 @@ class ShizukuManager {
         }
     }
 }
+
+/**
+     * قراءة الماك أدرس الفعلي من عمق النظام للتأكد من نجاح تغييره
+     */
+    fun getActualMacAddress(): String {
+        if (!hasPermission()) return "غير متاح (بدون صلاحية)"
+        
+        return try {
+            val command = "cat /sys/class/net/p2p0/address"
+            val commandArray = arrayOf("sh", "-c", command)
+            val shizukuClass = Shizuku::class.java
+            val processMethod = shizukuClass.methods.firstOrNull { it.name == "newProcess" }
+            
+            if (processMethod != null) {
+                val process = when (processMethod.parameterTypes.size) {
+                    1 -> processMethod.invoke(null, commandArray)
+                    2 -> processMethod.invoke(null, commandArray, null)
+                    3 -> processMethod.invoke(null, commandArray, null, null)
+                    else -> null
+                } as? Process
+                
+                // قراءة المخرجات (الماك أدرس) من سطر الأوامر
+                val reader = java.io.BufferedReader(java.io.InputStreamReader(process?.inputStream))
+                val actualMac = reader.readLine()?.trim() ?: "غير معروف"
+                process?.waitFor()
+                
+                actualMac
+            } else {
+                "فشل استدعاء Shizuku"
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            "خطأ في القراءة"
+        }
+    }
