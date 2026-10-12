@@ -56,6 +56,8 @@ class MainViewModel : ViewModel() {
 
     fun startSession(context: Context) {
         wifiDirectManager = WifiDirectManager(context)
+        keepAliveManager = KeepAliveManager(context)
+        keepAliveManager?.acquireWakeLock()
         
         viewModelScope.launch {
             delay(500)
@@ -66,21 +68,42 @@ class MainViewModel : ViewModel() {
                     _networkPassword.value = password
                     _isSessionActive.value = true 
                     
-                    // تشغيل البروكسي فوراً
                     proxyManager.startServer(_currentPort.value)
                     
-                    // استدعاء أوامر Shizuku لتغيير الـ MAC، الـ IP، والـ DNS في الخلفية
+                    // تنفيذ أوامر التخفي والتحقق منها
                     viewModelScope.launch(Dispatchers.IO) {
-                        shizukuManager.setupCleanSessionNetwork(
-                            newIp = _currentIp.value,
+                        proxyManager.addLog("⏳ جاري تطبيق أوامر التخفي (MAC & DNS)...")
+                        
+                        val isShizukuSuccess = shizukuManager.setupCleanSessionNetwork(
+                            newIp = _currentIp.value, // أعدناه إلى 192.168.49.1 سابقاً
                             newMac = _currentMac.value,
                             dnsIp = _currentDns.value
                         )
+                        
+                        // ننتظر ثانية واحدة لكي يستوعب النظام التغييرات
+                        delay(1000)
+                        
+                        if (isShizukuSuccess) {
+                            // قراءة الماك الفعلي بعد التعديل
+                            val actualMac = shizukuManager.getActualMacAddress()
+                            
+                            // التحقق والمطابقة
+                            if (actualMac.equals(_currentMac.value, ignoreCase = true)) {
+                                proxyManager.addLog("✅ نجاح: تم تغيير الماك أدرس إلى $actualMac")
+                            } else {
+                                proxyManager.addLog("⚠️ تحذير: الماك الحالي هو $actualMac (لم يتطابق مع المطلوب)")
+                            }
+                            
+                            proxyManager.addLog("✅ نجاح: تم توجيه DNS إجبارياً إلى ${_currentDns.value}")
+                        } else {
+                            proxyManager.addLog("❌ فشل في تطبيق أوامر التخفي (تأكد من صلاحيات Shizuku).")
+                        }
                     }
                 },
                 onFailure = { error ->
                     println("Error starting network: $error")
                     _isSessionActive.value = false
+                    keepAliveManager?.releaseWakeLock()
                 }
             )
         }
