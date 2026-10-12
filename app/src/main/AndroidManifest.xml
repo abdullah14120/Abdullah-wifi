@@ -24,6 +24,8 @@
     <!-- Shizuku Permission -->
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
