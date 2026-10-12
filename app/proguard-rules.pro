@@ -20,6 +20,8 @@
 -dontwarn org.eclipse.jetty.**
 -dontwarn org.jboss.marshalling.**
 -dontwarn org.littleshoot.dnssec4j.**
+# تجاهل تحذيرات Netty العميقة للوصول للذاكرة
+-dontwarn sun.misc.Unsafe
 
 # =========================================================
 # 2. الحفاظ على كلاسات التطبيق الأساسية (Keep Rules)
@@ -29,5 +31,7 @@
 -keep class org.littleshoot.proxy.** { *; }
 -keep class io.netty.** { *; }
 
-# الحفاظ على كلاسات Shizuku
+# الحفاظ على جميع حزم وكلاسات Shizuku (بما فيها الـ Provider الجديد)
 -keep class rikka.shizuku.** { *; }
+-keep class dev.rikka.** { *; }
+-keep class moe.shizuku.** { *; }
