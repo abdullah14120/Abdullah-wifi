@@ -53,10 +53,6 @@ class MainViewModel : ViewModel() {
         wifiDirectManager = WifiDirectManager(context)
         
         viewModelScope.launch {
-            // withContext(Dispatchers.IO) {
-            //     shizukuManager.randomizeDeviceName(_targetDeviceName.value)
-            // }
-            
             delay(500)
             
             wifiDirectManager?.startBroadcast(
@@ -65,13 +61,12 @@ class MainViewModel : ViewModel() {
                     _networkPassword.value = password
                     _isSessionActive.value = true 
                     
+                    // التعديل الجذري: تشغيل البروكسي فوراً دون انتظار شروط Shizuku
+                    proxyManager.startServer(_currentPort.value)
+                    
+                    // استدعاء Shizuku في الخلفية (في حال احتجناه لاحقاً) دون أن يوقف البروكسي
                     viewModelScope.launch(Dispatchers.IO) {
-                        val isShizukuReady = shizukuManager.setupCleanSessionNetwork(_currentIp.value)
-                        
-                        if (isShizukuReady) {
-                            // الاستدعاء الآن يتم بشكل صحيح بدون context
-                            proxyManager.startServer(_currentPort.value)
-                        }
+                        shizukuManager.setupCleanSessionNetwork(_currentIp.value)
                     }
                 },
                 onFailure = { error ->
@@ -81,7 +76,6 @@ class MainViewModel : ViewModel() {
             )
         }
     }
-
     fun stopSession(context: Context) {
         wifiDirectManager?.stopBroadcast()
         // الاستدعاء هنا أيضاً يتم بدون context
