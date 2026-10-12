@@ -3,6 +3,7 @@ package com.abdullah.wifibridge.ui
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.abdullah.wifibridge.data.network.KeepAliveManager
 import com.abdullah.wifibridge.data.network.ProxyServerManager
 import com.abdullah.wifibridge.data.network.WifiDirectManager
 import com.abdullah.wifibridge.data.shizuku.ShizukuManager
@@ -35,6 +36,9 @@ class MainViewModel : ViewModel() {
     private var wifiDirectManager: WifiDirectManager? = null
     private val proxyManager = ProxyServerManager()
     private val shizukuManager = ShizukuManager()
+    
+    // تعريف المتغير هنا لحل مشكلة Unresolved reference
+    private var keepAliveManager: KeepAliveManager? = null
 
     val proxyLogs: StateFlow<List<String>> = proxyManager.serverLogs
 
@@ -112,6 +116,10 @@ class MainViewModel : ViewModel() {
     fun stopSession(context: Context) {
         wifiDirectManager?.stopBroadcast()
         proxyManager.stopServer()
+        
+        // إيقاف الـ Wakelock عند إنهاء الجلسة
+        keepAliveManager?.releaseWakeLock()
+        
         _isSessionActive.value = false
         _networkName.value = ""
         _networkPassword.value = ""
