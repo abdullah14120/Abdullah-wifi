@@ -20,21 +20,16 @@ class ShizukuManager {
     }
 
     /**
-     * إعداد الجلسة النظيفة: تغيير MAC، IP، وتوجيه الـ DNS
+     * إعداد الجلسة النظيفة: توجيه الـ DNS (تم إيقاف الماك للحفاظ على الاستقرار)
      */
     fun setupCleanSessionNetwork(newIp: String, newMac: String, dnsIp: String): Boolean {
         if (!hasPermission()) return false
         
         return try {
             val commands = """
-                # 1. تغيير الماك أدرس لشبكة البث (P2P)
-                ip link set dev p2p0 down
-                ip link set dev p2p0 address $newMac
-                ip link set dev p2p0 up
+                # تم إيقاف أوامر تغيير الماك أدرس لأن النظام يرفضها بدون روت كامل
                 
-                # 2. تم إيقاف أمر ifconfig هنا للعودة للاستقرار
-                
-                # 3. توجيه جميع طلبات الـ DNS القادمة من العميل إلى الـ DNS المختار (تشفير وإخفاء)
+                # توجيه جميع طلبات الـ DNS القادمة من العميل إلى الـ DNS المختار (تشفير وإخفاء)
                 iptables -t nat -A PREROUTING -i p2p0 -p udp --dport 53 -j DNAT --to-destination $dnsIp:53
                 iptables -t nat -A PREROUTING -i p2p0 -p tcp --dport 53 -j DNAT --to-destination $dnsIp:53
             """.trimIndent()
@@ -53,6 +48,7 @@ class ShizukuManager {
                 
                 val exitCode = process?.waitFor() ?: -1
                 println("Shizuku Clean Session Setup Exit Code: $exitCode")
+                // أوامر iptables عادة تعيد 0 عند النجاح
                 exitCode == 0
             } else {
                 false
@@ -64,7 +60,7 @@ class ShizukuManager {
     }
 
     /**
-     * قراءة الماك أدرس الفعلي من عمق النظام للتأكد من نجاح تغييره
+     * قراءة الماك أدرس الفعلي من عمق النظام للتأكد من نجاح تغييره (أو لغرض العرض فقط)
      */
     fun getActualMacAddress(): String {
         if (!hasPermission()) return "غير متاح (بدون صلاحية)"
