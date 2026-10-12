@@ -69,7 +69,8 @@ class ProxyServerManager {
         addLog("🛑 تم إيقاف البروكسي.")
     }
 
-    private fun addLog(message: String) {
+    // مسح كلمة private من هنا
+    fun addLog(message: String) {
         val logs = _serverLogs.value.toMutableList()
         logs.add(0, message)
         _serverLogs.value = logs
