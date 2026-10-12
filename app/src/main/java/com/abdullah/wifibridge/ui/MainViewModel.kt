@@ -39,20 +39,18 @@ class MainViewModel : ViewModel() {
     val proxyLogs: StateFlow<List<String>> = proxyManager.serverLogs
 
     fun generateCleanSessionParams() {
-        // 1. توليد IP جديد (مثال: 192.168.75.1)
-        val randomSubnet = Random.nextInt(10, 250)
-        _currentIp.value = "192.168.$randomSubnet.1"
+        // العودة للـ IP القياسي المضمون 100% في أندرويد لشبكات P2P
+        _currentIp.value = "192.168.49.1"
         
-        // 2. توليد منفذ جديد
         _currentPort.value = Random.nextInt(10000, 60000)
         
-        // 3. توليد MAC Address آمن محلياً (يبدأ بـ 02 لتجنب أخطاء النظام)
+        // إبقاء توليد الماك الآمن
         val macBytes = ByteArray(5)
         Random.nextBytes(macBytes)
         _currentMac.value = String.format("02:%02x:%02x:%02x:%02x:%02x", 
             macBytes[0], macBytes[1], macBytes[2], macBytes[3], macBytes[4])
 
-        // 4. اختيار DNS عشوائي بين Cloudflare و Google
+        // إبقاء اختيار DNS عشوائي
         _currentDns.value = listOf("1.1.1.1", "8.8.8.8").random()
     }
 
