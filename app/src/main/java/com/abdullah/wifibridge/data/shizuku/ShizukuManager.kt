@@ -92,3 +92,4 @@ class ShizukuManager {
             "خطأ في القراءة"
         }
     }
+}  
