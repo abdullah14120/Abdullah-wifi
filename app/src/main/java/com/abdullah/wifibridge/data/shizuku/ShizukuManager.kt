@@ -27,29 +27,42 @@ class ShizukuManager {
         }
     }
 
-    // تم تغيير نوع الإرجاع إلى String لطباعة سبب الخطأ بدقة
     fun setupCleanSessionNetwork(dnsIp: String): String {
         if (checkShizukuStatus() != 1) return "Shizuku غير متصل أو لا يملك صلاحية."
 
         return try {
-            // دمج الأمرين لضمان التنفيذ المتسلسل
             val command = "iptables -t nat -A PREROUTING -i p2p0 -p udp --dport 53 -j DNAT --to-destination $dnsIp:53 && iptables -t nat -A PREROUTING -i p2p0 -p tcp --dport 53 -j DNAT --to-destination $dnsIp:53"
+            val commandArray = arrayOf("sh", "-c", command)
+            
+            // استخدام الـ Reflection الصحيح لتجاوز خطأ الـ Private Method في الإصدار 13+
+            val shizukuClass = Shizuku::class.java
+            val processMethod = shizukuClass.methods.firstOrNull { it.name == "newProcess" }
+            
+            val process = if (processMethod != null) {
+                when (processMethod.parameterTypes.size) {
+                    1 -> processMethod.invoke(null, commandArray)
+                    2 -> processMethod.invoke(null, commandArray, null)
+                    3 -> processMethod.invoke(null, commandArray, null, null)
+                    else -> null
+                } as? Process
+            } else {
+                return "خطأ: لم يتم العثور على دالة تشغيل الأوامر في Shizuku."
+            }
 
-            // استخدام دالة Shizuku مباشرة
-            val process = Shizuku.newProcess(arrayOf("sh", "-c", command), null, null)
+            if (process == null) return "فشل إنشاء عملية Shizuku (Process = null)."
+
             val exitCode = process.waitFor()
 
             if (exitCode == 0) {
                 "SUCCESS"
             } else {
-                // قراءة الخطأ الحقيقي من النظام
                 val errorReader = BufferedReader(InputStreamReader(process.errorStream))
                 val errorOutput = errorReader.readText().trim()
 
                 if (errorOutput.contains("Permission denied", ignoreCase = true) || errorOutput.contains("root", ignoreCase = true)) {
                     "iptables يطلب صلاحية Root. (Shizuku يعمل بوضع ADB فقط)"
                 } else if (errorOutput.contains("No such device", ignoreCase = true)) {
-                    "واجهة p2p0 غير جاهزة أو غير موجودة في هذا الهاتف."
+                    "واجهة p2p0 غير جاهزة بعد، أو غير مدعومة."
                 } else {
                     "السبب: $errorOutput"
                 }
