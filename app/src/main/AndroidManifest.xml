@@ -2,31 +2,21 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Network & Wi-Fi Permissions -->
+    <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
-    
-    <!-- Location is required for Wi-Fi Direct discovery -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    
-    <!-- Android 13+ Nearby Devices (avoid needing location) -->
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" 
                      android:usesPermissionFlags="neverForLocation" 
                      tools:targetApi="33"/>
-
-    <!-- Foreground Service -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-
-    <!-- Shizuku Permission -->
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
-
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- القسم الجديد للسماح للتطبيق باكتشاف والتخاطب مع تطبيق Shizuku الأساسي -->
     <queries>
         <package android:name="moe.shizuku.privileged.api" />
     </queries>
@@ -40,7 +30,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.WiFiBridge"
-        android:usesCleartextTraffic="true"> <!-- Allow HTTP through proxy -->
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".ui.MainActivity"
@@ -56,6 +46,15 @@
             android:name=".service.ProxyForegroundService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- 🚀 هذا هو السر المفقود: تعريف بوابة Shizuku يدوياً -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
     </application>
 </manifest>
