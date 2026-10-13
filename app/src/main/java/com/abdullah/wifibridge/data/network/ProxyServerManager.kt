@@ -23,25 +23,33 @@ class ProxyServerManager {
     private val _serverLogs = MutableStateFlow<List<String>>(emptyList())
     val serverLogs: StateFlow<List<String>> = _serverLogs
 
-    // تمت إزالة context: Context من هنا
     fun startServer(port: Int) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                addLog("⏳ جاري تشغيل البروكسي على المنفذ: $port...")
+                addLog("⏳ جاري تشغيل البروكسي الشبح على المنفذ: $port...")
                 
                 proxyServer = DefaultHttpProxyServer.bootstrap()
                     .withPort(port)
                     .withAddress(InetSocketAddress("0.0.0.0", port))
                     .withAllowLocalOnly(false)
+                    // 🚀 السحر هنا: توجيه كل طلبات المواقع عبر Cloudflare المشفر!
+                    .withServerResolver(CloudflareDnsResolver()) 
                     .withFiltersSource(object : HttpFiltersSourceAdapter() {
                         override fun filterRequest(originalRequest: HttpRequest, ctx: ChannelHandlerContext): HttpFilters {
-                            addLog("🌐 طلب: ${originalRequest.uri}")
                             return object : HttpFiltersAdapter(originalRequest) {
                                 override fun clientToProxyRequest(httpObject: io.netty.handler.codec.http.HttpObject): HttpResponse? {
                                     if (httpObject is HttpRequest) {
+                                        // 1. مسح آثار البروكسي من الطلب
                                         httpObject.headers().remove("X-Forwarded-For")
                                         httpObject.headers().remove("Via")
                                         httpObject.headers().remove("Proxy-Connection")
+                                        
+                                        // 2. إخفاء هوية الجهاز (User-Agent Spoofing) للطلبات غير المشفرة
+                                        // نجعل الطلب يبدو وكأنه قادم من متصفح هاتف أندرويد قياسي وليس جهازا متصلا بالشبكة
+                                        if (httpObject.headers().contains("User-Agent")) {
+                                            httpObject.headers().set("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+                                        }
+                                        
                                         httpObject.headers().set("Connection", "keep-alive")
                                     }
                                     return null
@@ -52,7 +60,7 @@ class ProxyServerManager {
                     .start()
                 
                 _isServerRunning.value = true
-                addLog("✅ البروكسي جاهز ويستمع للطلبات!")
+                addLog("✅ البروكسي جاهز (DNS مشفر عبر Cloudflare 1.1.1.1)")
             } catch (e: Exception) {
                 e.printStackTrace()
                 addLog("❌ خطأ تشغيل البروكسي: ${e.message}")
@@ -61,7 +69,6 @@ class ProxyServerManager {
         }
     }
 
-    // تمت إزالة context: Context من هنا
     fun stopServer() {
         proxyServer?.stop()
         proxyServer = null
@@ -69,7 +76,6 @@ class ProxyServerManager {
         addLog("🛑 تم إيقاف البروكسي.")
     }
 
-    // مسح كلمة private من هنا
     fun addLog(message: String) {
         val logs = _serverLogs.value.toMutableList()
         logs.add(0, message)
