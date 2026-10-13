@@ -34,21 +34,19 @@ class ShizukuManager {
             val command = "iptables -t nat -A PREROUTING -i p2p0 -p udp --dport 53 -j DNAT --to-destination $dnsIp:53 && iptables -t nat -A PREROUTING -i p2p0 -p tcp --dport 53 -j DNAT --to-destination $dnsIp:53"
             val commandArray = arrayOf("sh", "-c", command)
             
-            // استخدام الـ Reflection الصحيح لتجاوز خطأ الـ Private Method في الإصدار 13+
+            // 🚀 استخدام الانعكاس (Reflection) المتقدم للوصول للدالة المخفية
             val shizukuClass = Shizuku::class.java
-            val processMethod = shizukuClass.methods.firstOrNull { it.name == "newProcess" }
+            val processMethod = shizukuClass.getDeclaredMethod(
+                "newProcess",
+                Array<String>::class.java,
+                Array<String>::class.java,
+                String::class.java
+            )
+            // 🔓 كسر الحماية (Private) لجعل الدالة قابلة للاستخدام
+            processMethod.isAccessible = true 
             
-            val process = if (processMethod != null) {
-                when (processMethod.parameterTypes.size) {
-                    1 -> processMethod.invoke(null, commandArray)
-                    2 -> processMethod.invoke(null, commandArray, null)
-                    3 -> processMethod.invoke(null, commandArray, null, null)
-                    else -> null
-                } as? Process
-            } else {
-                return "خطأ: لم يتم العثور على دالة تشغيل الأوامر في Shizuku."
-            }
-
+            val process = processMethod.invoke(null, commandArray, null, null) as? Process
+            
             if (process == null) return "فشل إنشاء عملية Shizuku (Process = null)."
 
             val exitCode = process.waitFor()
@@ -56,13 +54,14 @@ class ShizukuManager {
             if (exitCode == 0) {
                 "SUCCESS"
             } else {
+                // قراءة الخطأ الحقيقي من النواة
                 val errorReader = BufferedReader(InputStreamReader(process.errorStream))
                 val errorOutput = errorReader.readText().trim()
 
                 if (errorOutput.contains("Permission denied", ignoreCase = true) || errorOutput.contains("root", ignoreCase = true)) {
-                    "iptables يطلب صلاحية Root. (Shizuku يعمل بوضع ADB فقط)"
+                    "أمر iptables يطلب صلاحية Root! (Shizuku يعمل بوضع ADB ولن يقبل هذا الأمر)"
                 } else if (errorOutput.contains("No such device", ignoreCase = true)) {
-                    "واجهة p2p0 غير جاهزة بعد، أو غير مدعومة."
+                    "واجهة p2p0 غير جاهزة بعد، أو غير موجودة."
                 } else {
                     "السبب: $errorOutput"
                 }
