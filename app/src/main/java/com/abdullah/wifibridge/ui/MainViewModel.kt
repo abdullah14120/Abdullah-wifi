@@ -46,12 +46,6 @@ class MainViewModel : ViewModel() {
     fun generateCleanSessionParams() {
         _currentIp.value = "192.168.49.1"
         _currentPort.value = Random.nextInt(10000, 60000)
-        
-        val macBytes = ByteArray(5)
-        Random.nextBytes(macBytes)
-        _currentMac.value = String.format("02:%02x:%02x:%02x:%02x:%02x", 
-            macBytes[0], macBytes[1], macBytes[2], macBytes[3], macBytes[4])
-
         _currentDns.value = listOf("1.1.1.1", "8.8.8.8").random()
     }
 
@@ -74,36 +68,24 @@ class MainViewModel : ViewModel() {
                     val shizukuStatus = shizukuManager.checkShizukuStatus()
                     
                     when (shizukuStatus) {
-                        -1, -2 -> {
-                            proxyManager.addLog("⏳ جاري انتظار إيقاظ Shizuku (قد يستغرق بضع ثوانٍ)...")
-                            
-                            // مستمع التقاط الاتصال
-                            val binderListener = object : Shizuku.OnBinderReceivedListener {
-                                override fun onBinderReceived() {
-                                    proxyManager.addLog("✅ تم التقاط إشارة Shizuku بنجاح!")
-                                    Shizuku.removeBinderReceivedListener(this)
-                                    
-                                    if (shizukuManager.checkShizukuStatus() == 1) {
-                                        executeShizukuCommands()
-                                    } else {
-                                        requestShizukuPermissionAsync()
-                                    }
-                                }
-                            }
-                            
-                            Shizuku.addBinderReceivedListener(binderListener)
-                            
-                            // مهلة 5 ثوانٍ للإلغاء إذا لم يتصل
-                            viewModelScope.launch {
-                                delay(5000)
-                                if (shizukuManager.checkShizukuStatus() < 0) {
-                                    proxyManager.addLog("❌ فشل الاتصال. يرجى تفعيل (التشغيل التلقائي) للتطبيق من إعدادات الهاتف.")
-                                    Shizuku.removeBinderReceivedListener(binderListener)
-                                }
-                            }
+                        -1 -> {
+                            proxyManager.addLog("❌ Shizuku لا يستجيب (الاتصال مقطوع).")
                         }
                         0 -> {
-                            requestShizukuPermissionAsync()
+                            proxyManager.addLog("⚠️ جاري طلب صلاحية Shizuku...")
+                            val listener = object : Shizuku.OnRequestPermissionResultListener {
+                                override fun onRequestPermissionResult(requestCode: Int, grantResult: Int) {
+                                    if (grantResult == PackageManager.PERMISSION_GRANTED) {
+                                        proxyManager.addLog("✅ تم منح الصلاحية بنجاح.")
+                                        executeShizukuCommands()
+                                    } else {
+                                        proxyManager.addLog("❌ تم رفض الصلاحية من قبل المستخدم.")
+                                    }
+                                    Shizuku.removeRequestPermissionResultListener(this)
+                                }
+                            }
+                            Shizuku.addRequestPermissionResultListener(listener)
+                            shizukuManager.requestPermission(100)
                         }
                         1 -> {
                             proxyManager.addLog("✅ Shizuku متصل ومصرح به مسبقاً.")
@@ -120,41 +102,22 @@ class MainViewModel : ViewModel() {
         }
     }
 
-    // دالة منفصلة لطلب الصلاحية بشكل غير متزامن
-    private fun requestShizukuPermissionAsync() {
-        proxyManager.addLog("⚠️ التطبيق يحتاج صلاحية Shizuku. يرجى الموافقة على النافذة المنبثقة...")
-        val listener = object : Shizuku.OnRequestPermissionResultListener {
-            override fun onRequestPermissionResult(requestCode: Int, grantResult: Int) {
-                if (grantResult == PackageManager.PERMISSION_GRANTED) {
-                    proxyManager.addLog("✅ تم منح الصلاحية! جاري تطبيق قواعد التخفي...")
-                    executeShizukuCommands()
-                } else {
-                    proxyManager.addLog("❌ تم رفض الصلاحية من قبل المستخدم.")
-                }
-                Shizuku.removeRequestPermissionResultListener(this)
-            }
-        }
-        Shizuku.addRequestPermissionResultListener(listener)
-        shizukuManager.requestPermission(100)
-    }
-
-    // دالة منفصلة لتنفيذ الأوامر
     private fun executeShizukuCommands() {
         viewModelScope.launch(Dispatchers.IO) {
             proxyManager.addLog("⏳ جاري توجيه طلبات DNS وتشفيرها...")
             
-            val isShizukuSuccess = shizukuManager.setupCleanSessionNetwork(
-                newIp = _currentIp.value, 
-                newMac = _currentMac.value,
+            // إعطاء مهلة ثانيتين لضمان إنشاء واجهة p2p0 بالكامل قبل إرسال الأوامر
+            delay(2000)
+            
+            val resultMessage = shizukuManager.setupCleanSessionNetwork(
                 dnsIp = _currentDns.value
             )
             
-            delay(1000)
-            
-            if (isShizukuSuccess) {
+            if (resultMessage == "SUCCESS") {
                 proxyManager.addLog("✅ نجاح: تم توجيه طلبات DNS إجبارياً إلى ${_currentDns.value}")
             } else {
-                proxyManager.addLog("❌ فشل في تطبيق أوامر iptables.")
+                // سيتم هنا طباعة الخطأ الحقيقي القادم من نواة النظام
+                proxyManager.addLog("❌ فشل الأوامر - $resultMessage")
             }
         }
     }
