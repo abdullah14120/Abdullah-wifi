@@ -2,23 +2,15 @@ package com.abdullah.wifibridge.data.shizuku
 
 import android.content.pm.PackageManager
 import rikka.shizuku.Shizuku
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 class ShizukuManager {
 
-    /**
-     * 1: Shizuku يعمل والصلاحية ممنوحة
-     * 0: Shizuku يعمل ولكن يحتاج صلاحية
-     * -1: البيندر مفقود (غير متصل)
-     */
     fun checkShizukuStatus(): Int {
         return try {
-            // استخدام الطريقة الدقيقة من تطبيق EnableVoLTE
             if (Shizuku.getBinder() != null) {
-                if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                    1
-                } else {
-                    0
-                }
+                if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) 1 else 0
             } else {
                 -1
             }
@@ -35,35 +27,36 @@ class ShizukuManager {
         }
     }
 
-    fun setupCleanSessionNetwork(newIp: String, newMac: String, dnsIp: String): Boolean {
-        if (checkShizukuStatus() != 1) return false
-        
-        return try {
-            val commands = """
-                iptables -t nat -A PREROUTING -i p2p0 -p udp --dport 53 -j DNAT --to-destination $dnsIp:53
-                iptables -t nat -A PREROUTING -i p2p0 -p tcp --dport 53 -j DNAT --to-destination $dnsIp:53
-            """.trimIndent()
+    // تم تغيير نوع الإرجاع إلى String لطباعة سبب الخطأ بدقة
+    fun setupCleanSessionNetwork(dnsIp: String): String {
+        if (checkShizukuStatus() != 1) return "Shizuku غير متصل أو لا يملك صلاحية."
 
-            val commandArray = arrayOf("sh", "-c", commands)
-            val shizukuClass = Shizuku::class.java
-            val processMethod = shizukuClass.methods.firstOrNull { it.name == "newProcess" }
-            
-            if (processMethod != null) {
-                val process = when (processMethod.parameterTypes.size) {
-                    1 -> processMethod.invoke(null, commandArray)
-                    2 -> processMethod.invoke(null, commandArray, null)
-                    3 -> processMethod.invoke(null, commandArray, null, null)
-                    else -> null
-                } as? Process
-                
-                val exitCode = process?.waitFor() ?: -1
-                exitCode == 0
+        return try {
+            // دمج الأمرين لضمان التنفيذ المتسلسل
+            val command = "iptables -t nat -A PREROUTING -i p2p0 -p udp --dport 53 -j DNAT --to-destination $dnsIp:53 && iptables -t nat -A PREROUTING -i p2p0 -p tcp --dport 53 -j DNAT --to-destination $dnsIp:53"
+
+            // استخدام دالة Shizuku مباشرة
+            val process = Shizuku.newProcess(arrayOf("sh", "-c", command), null, null)
+            val exitCode = process.waitFor()
+
+            if (exitCode == 0) {
+                "SUCCESS"
             } else {
-                false
+                // قراءة الخطأ الحقيقي من النظام
+                val errorReader = BufferedReader(InputStreamReader(process.errorStream))
+                val errorOutput = errorReader.readText().trim()
+
+                if (errorOutput.contains("Permission denied", ignoreCase = true) || errorOutput.contains("root", ignoreCase = true)) {
+                    "iptables يطلب صلاحية Root. (Shizuku يعمل بوضع ADB فقط)"
+                } else if (errorOutput.contains("No such device", ignoreCase = true)) {
+                    "واجهة p2p0 غير جاهزة أو غير موجودة في هذا الهاتف."
+                } else {
+                    "السبب: $errorOutput"
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            "خطأ برمجي: ${e.message}"
         }
     }
 }
