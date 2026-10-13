@@ -8,19 +8,22 @@ class ShizukuManager {
     /**
      * 1: Shizuku يعمل والصلاحية ممنوحة
      * 0: Shizuku يعمل ولكن يحتاج صلاحية
-     * -1: البيندر ميت (غير متصل)
-     * -2: خطأ برمجي (النظام يمنع الاتصال)
+     * -1: البيندر مفقود (غير متصل)
      */
     fun checkShizukuStatus(): Int {
         return try {
-            if (Shizuku.pingBinder()) {
-                if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) 1 else 0
+            // استخدام الطريقة الدقيقة من تطبيق EnableVoLTE
+            if (Shizuku.getBinder() != null) {
+                if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
+                    1
+                } else {
+                    0
+                }
             } else {
-                -1 
+                -1
             }
         } catch (e: Exception) {
-            e.printStackTrace()
-            -2
+            -1
         }
     }
 
