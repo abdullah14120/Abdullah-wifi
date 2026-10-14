@@ -48,7 +48,7 @@ class MainViewModel : ViewModel() {
         
         // توليد IP عشوائي في نطاق 10.0.X.1
         val randomSubnet = Random.nextInt(1, 250)
-        currentIp.value = "10.0.$randomSubnet.1"
+        currentIp.value = "192.168.$randomSubnet.1"
         
         // توليد اسم وكلمة مرور عشوائية
         networkName.value = "DIRECT-${Random.nextInt(10, 99)}-Bridge${generateRandomString(4)}"
