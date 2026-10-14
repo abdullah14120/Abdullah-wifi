@@ -25,27 +25,29 @@ class WifiDirectManager(private val context: Context) {
         val currentManager = manager
         val currentChannel = channel
 
-        // 1. التحقق من دعم الجهاز
         if (currentManager == null || currentChannel == null) {
             onFailure("Wi-Fi Direct غير مدعوم في هذا الجهاز")
             return
         }
 
-        // 2. التحقق من الصلاحيات
-        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.NEARBY_WIFI_DEVICES) != PackageManager.PERMISSION_GRANTED) {
-            // في أندرويد 13 والإصدارات الأقدم، قد لا تكون هذه الصلاحية المطلوبة بدقة هنا ولكن نتحقق منها احتياطياً
-            // سيتم تجاهل الفشل إذا كان النظام أقدم
-        }
-
-        // 3. إزالة أي مجموعة سابقة لتجنب التعارض
+        // إزالة المجموعة السابقة والانتظار ثانية لتهدئة الكرت
         currentManager.removeGroup(currentChannel, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() = createNewGroup(currentManager, currentChannel, customSsid, customPassword, onSuccess, onFailure)
-            override fun onFailure(reason: Int) = createNewGroup(currentManager, currentChannel, customSsid, customPassword, onSuccess, onFailure)
+            override fun onSuccess() {
+                Handler(Looper.getMainLooper()).postDelayed({
+                    executeCreateGroup(currentManager, currentChannel, customSsid, customPassword, onSuccess, onFailure)
+                }, 1000)
+            }
+
+            override fun onFailure(reason: Int) {
+                Handler(Looper.getMainLooper()).postDelayed({
+                    executeCreateGroup(currentManager, currentChannel, customSsid, customPassword, onSuccess, onFailure)
+                }, 1000)
+            }
         })
     }
 
     @SuppressLint("MissingPermission")
-    private fun createNewGroup(
+    private fun executeCreateGroup(
         currentManager: WifiP2pManager,
         currentChannel: WifiP2pManager.Channel,
         customSsid: String,
@@ -53,15 +55,10 @@ class WifiDirectManager(private val context: Context) {
         onSuccess: (String, String) -> Unit,
         onFailure: (String) -> Unit
     ) {
-        // الطريقة الحديثة لدعم الإعدادات المخصصة (أندرويد 10 وما فوق)
+        // الطريقة الحديثة (أندرويد 10 وأحدث)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && customSsid.isNotEmpty() && customPassword.length >= 8) {
             try {
-                // جوجل تجبرنا على أن يبدأ الاسم بـ DIRECT- يليه حرفين أو رقمين ثم شرطة
-                val validSsid = if (customSsid.startsWith("DIRECT-")) {
-                    customSsid
-                } else {
-                    "DIRECT-a1-$customSsid"
-                }
+                val validSsid = if (customSsid.startsWith("DIRECT-")) customSsid else "DIRECT-a1-$customSsid"
 
                 val config = WifiP2pConfig.Builder()
                     .setNetworkName(validSsid)
@@ -72,33 +69,69 @@ class WifiDirectManager(private val context: Context) {
                     override fun onSuccess() {
                         onSuccess(validSsid, customPassword)
                     }
-
                     override fun onFailure(reason: Int) {
-                        onFailure("فشل إنشاء المجموعة المخصصة (الكود: $reason)")
+                        if (reason == 2) {
+                            onFailure("النظام مشغول (Busy). أطفئ الواي فاي وشغله مجدداً.")
+                        } else {
+                            onFailure("فشل إنشاء المجموعة المخصصة (الكود: $reason)")
+                        }
                     }
                 })
             } catch (e: Exception) {
-                onFailure("خطأ في بناء بيانات الشبكة: ${e.message}")
+                onFailure("خطأ في بيانات الشبكة: ${e.message}")
             }
         } else {
-            // الطريقة الكلاسيكية للأجهزة القديمة أو في حال كانت البيانات المخصصة فارغة/قصيرة
+            // ==========================================
+            // الطريقة الكلاسيكية الجديدة (للأجهزة العنيدة)
+            // ==========================================
+            
+            // 🚀 السر الأول: إيقاف أي عملية بحث (Discovery) قد تعطل إنشاء المجموعة
+            currentManager.stopPeerDiscovery(currentChannel, null)
+
+            // 🚀 السر الثاني: استخدام الدالة القديمة ولكن بشكل "صامت ومستمر"
             currentManager.createGroup(currentChannel, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() {
+                    
+                    // ننتظر ثانيتين كاملتين للتأكد من أن النواة قامت بتجهيز الشبكة بالكامل
                     Handler(Looper.getMainLooper()).postDelayed({
-                        currentManager.requestGroupInfo(currentChannel) { group ->
-                            if (group != null && group.isGroupOwner) {
-                                onSuccess(group.networkName, group.passphrase ?: "12345678")
-                            } else {
-                                onFailure("لم يتم تعيين الجهاز كمضيف للشبكة.")
-                            }
-                        }
-                    }, 500)
+                        checkGroupStatus(currentManager, currentChannel, onSuccess, onFailure, retryCount = 0)
+                    }, 2000)
                 }
 
                 override fun onFailure(reason: Int) {
-                    onFailure("فشل البث التلقائي، كود: $reason")
+                    if (reason == 2) {
+                        onFailure("النظام مشغول (Busy). يرجى إيقاف الواي فاي وتشغيله يدوياً من إعدادات الهاتف.")
+                    } else {
+                        onFailure("فشل البث التلقائي، كود: $reason")
+                    }
                 }
             })
+        }
+    }
+
+    // 🚀 السر الثالث: دالة استدعاء متكررة (Recursive Check) 
+    // إذا لم يكن الهاتف مضيفاً في الثانية الأولى، ستحاول مرة أخرى بعد ثانية بدلاً من الفشل فوراً!
+    @SuppressLint("MissingPermission")
+    private fun checkGroupStatus(
+        manager: WifiP2pManager,
+        channel: WifiP2pManager.Channel,
+        onSuccess: (String, String) -> Unit,
+        onFailure: (String) -> Unit,
+        retryCount: Int
+    ) {
+        manager.requestGroupInfo(channel) { group ->
+            if (group != null && group.isGroupOwner) {
+                // نجاح! الهاتف أعلن نفسه كمضيف
+                onSuccess(group.networkName, group.passphrase ?: "12345678")
+            } else {
+                if (retryCount < 3) { // المحاولة 3 مرات كحد أقصى (تأخير 1 ثانية بين كل محاولة)
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        checkGroupStatus(manager, channel, onSuccess, onFailure, retryCount + 1)
+                    }, 1000)
+                } else {
+                    onFailure("لم يتم تعيين الجهاز كمضيف للشبكة. النظام يرفض فتح البث.")
+                }
+            }
         }
     }
 
