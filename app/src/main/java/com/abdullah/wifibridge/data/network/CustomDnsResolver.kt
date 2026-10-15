@@ -6,44 +6,58 @@ import java.net.InetSocketAddress
 import java.net.URL
 import javax.net.ssl.HttpsURLConnection
 
-class CloudflareDnsResolver(private val logCallback: (String) -> Unit) : HostResolver {
+class CustomDnsResolver(
+    private val provider: String,
+    private val customDohUrl: String,
+    private val logCallback: (String) -> Unit
+) : HostResolver {
     
     override fun resolve(host: String, port: Int): InetSocketAddress {
         try {
-            // تنظيف الرابط وإزالة المنفذ إن وُجد
             val cleanHost = host.substringBefore(":")
             
-            // إذا كان آي بي مباشر لا نشفره
-            if (cleanHost.matches(Regex("^\\d{1,3}(\\.\\d{1,3}){3}$"))) {
+            // إذا كان آي بي مباشر أو تم اختيار "بدون تشفير"
+            if (cleanHost.matches(Regex("^\\d{1,3}(\\.\\d{1,3}){3}$")) || provider == "بدون تشفير") {
+                if (provider == "بدون تشفير") logCallback("⚠️ تمرير $cleanHost (بدون تشفير)")
                 return InetSocketAddress(cleanHost, port)
             }
 
-            logCallback("🔍 جاري تشفير DNS للموقع: $cleanHost")
+            logCallback("🔍 تشفير DNS لـ $cleanHost عبر [$provider]")
 
-            // 1. المحاولة عبر Cloudflare
-            var ip = fetchDoh("https://cloudflare-dns.com/dns-query?name=$cleanHost&type=A", "Cloudflare")
-            
-            // 2. المحاولة عبر Google DNS
-            if (ip == null) {
-                ip = fetchDoh("https://dns.google/resolve?name=$cleanHost&type=A", "Google")
+            // اختيار رابط الـ DoH بناءً على اختيار المستخدم
+            val dohUrl = when (provider) {
+                "Cloudflare" -> "https://cloudflare-dns.com/dns-query?name=$cleanHost&type=A"
+                "Google" -> "https://dns.google/resolve?name=$cleanHost&type=A"
+                "AliDNS" -> "https://dns.alidns.com/resolve?name=$cleanHost&type=1"
+                "Custom DoH" -> {
+                    if (customDohUrl.isNotEmpty()) {
+                        // إضافة الاستعلام للرابط المخصص (يفترض أنه Cloudflare Worker)
+                        "$customDohUrl?name=$cleanHost&type=A"
+                    } else {
+                        null
+                    }
+                }
+                else -> "https://cloudflare-dns.com/dns-query?name=$cleanHost&type=A"
             }
 
-            // 3. المحاولة عبر AliDNS (خادم سريع وممتاز جداً لتجاوز الحجب)
-            if (ip == null) {
-                ip = fetchDoh("https://dns.alidns.com/resolve?name=$cleanHost&type=1", "AliDNS")
+            if (dohUrl == null) {
+                logCallback("❌ رابط Custom DoH فارغ. سيتم العودة للإنترنت العادي.")
+                return InetSocketAddress(cleanHost, port)
             }
+
+            // تنفيذ الطلب المشفر
+            val ip = fetchDoh(dohUrl, provider)
 
             if (ip != null) {
-                logCallback("✅ نجاح التشفير ($cleanHost -> $ip)")
+                logCallback("✅ تشفير ناجح ($cleanHost -> $ip)")
                 return InetSocketAddress(ip, port)
             } else {
-                logCallback("❌ فشلت جميع سيرفرات التشفير. سيتم استخدام DNS الهاتف العادي.")
+                logCallback("❌ فشل تشفير $provider. سيتم استخدام DNS الهاتف العادي.")
             }
         } catch (e: Exception) {
             logCallback("❌ خطأ عام في المحلل: ${e.message}")
         }
         
-        // الخطة البديلة: العودة لنظام أندرويد العادي
         return InetSocketAddress(host, port)
     }
 
@@ -54,7 +68,7 @@ class CloudflareDnsResolver(private val logCallback: (String) -> Unit) : HostRes
             connection.requestMethod = "GET"
             connection.setRequestProperty("accept", "application/dns-json")
             
-            // 🚀 رفع المهلة إلى 10 ثوانٍ ليتناسب مع بطء استجابة الشبكات
+            // مهلة طويلة نسبياً لتخطي بطء شبكات الـ 4G المحلية
             connection.connectTimeout = 10000 
             connection.readTimeout = 10000
 
@@ -71,7 +85,7 @@ class CloudflareDnsResolver(private val logCallback: (String) -> Unit) : HostRes
                         }
                     }
                 }
-                logCallback("⚠️ $providerName: لم يتم العثور على IP في الرد.")
+                logCallback("⚠️ $providerName: لا يوجد IP في الرد.")
                 null
             } else {
                 logCallback("⚠️ $providerName: رفض الاتصال (كود ${connection.responseCode})")
@@ -81,10 +95,10 @@ class CloudflareDnsResolver(private val logCallback: (String) -> Unit) : HostRes
             logCallback("⚠️ $providerName: انتهى وقت الاتصال (بطء إنترنت).")
             null
         } catch (e: java.net.UnknownHostException) {
-            logCallback("⚠️ $providerName: محجوب في شبكتك الرئيسية.")
+            logCallback("⚠️ $providerName: محجوب في شبكتك الرئيسية (حجب DPI).")
             null
         } catch (e: javax.net.ssl.SSLHandshakeException) {
-            logCallback("⚠️ $providerName: خطأ في شهادة الأمان (احتمال تدخل مزود الخدمة).")
+            logCallback("⚠️ $providerName: خطأ في شهادة الأمان (تدخل من مزود الخدمة).")
             null
         } catch (e: Exception) {
             logCallback("⚠️ $providerName خطأ: ${e.message}")
