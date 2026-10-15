@@ -69,6 +69,11 @@ dependencies {
     // LittleProxy (For robust HTTP proxying & header stripping)
     implementation("org.littleshoot:littleproxy:1.1.2")
 
+    implementation 'com.github.2dust:AndroidLibV2rayLite:1.0.9' 
+    
+    // مكتبة GSON للتعامل مع ملفات JSON بسهولة
+    implementation 'com.google.code.gson:gson:2.10.1'
+
     // لحل تعارضات مكتبة Guava مع LittleProxy
     implementation("com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava")
 }
