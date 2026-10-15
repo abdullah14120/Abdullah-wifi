@@ -1,6 +1,7 @@
 package com.abdullah.wifibridge.ui
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -19,9 +20,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
+// استيراد Shizuku
+import rikka.shizuku.Shizuku
+import com.abdullah.wifibridge.data.shizuku.ShizukuManager
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
+    // تعريف مدير Shizuku للفحص الأولي
+    private val shizukuManager = ShizukuManager()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,23 +37,35 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MainScreen(viewModel)
+                    MainScreen(viewModel, shizukuManager)
                 }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(viewModel: MainViewModel) {
+fun MainScreen(viewModel: MainViewModel, shizukuManager: ShizukuManager) {
     val ip by viewModel.currentIp.collectAsState()
+    val port by viewModel.currentPort.collectAsState()
+    val isActive by viewModel.isSessionActive.collectAsState()
     val netName by viewModel.networkName.collectAsState()
     val netPass by viewModel.networkPassword.collectAsState()
-    val isActive by viewModel.isSessionActive.collectAsState()
     val logs by viewModel.proxyLogs.collectAsState()
     
     val context = LocalContext.current
+
+    // التأثير الجانبي الذي يعمل مرة واحدة عند فتح الشاشة
+    LaunchedEffect(Unit) {
+        val status = shizukuManager.checkShizukuStatus()
+        if (status == -1) {
+            // إضافة سجل يفيد بأن التطبيق ينتظر Shizuku
+            // يمكنك ترك هذا كتحذير صامت للمستخدم
+        } else if (status == 0) {
+            // إذا كان يعمل ولكن لا يملك صلاحية، نطلبها فور فتح التطبيق
+            shizukuManager.requestPermission(200)
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -67,37 +85,16 @@ fun MainScreen(viewModel: MainViewModel) {
         
         Card(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("إعدادات الجلسة (قابلة للتعديل):", style = MaterialTheme.typography.titleMedium)
+                Text("Session Details:", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
+                Text("Gateway IP: $ip")
+                Text("Proxy Port: $port")
                 
-                // خانة الـ IP
-                OutlinedTextField(
-                    value = ip,
-                    onValueChange = { viewModel.currentIp.value = it },
-                    label = { Text("Gateway IP") },
-                    enabled = !isActive,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // خانة اسم الشبكة
-                OutlinedTextField(
-                    value = netName,
-                    onValueChange = { viewModel.networkName.value = it },
-                    label = { Text("SSID (يبدأ بـ DIRECT-xy-)") },
-                    enabled = !isActive,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // خانة كلمة المرور
-                OutlinedTextField(
-                    value = netPass,
-                    onValueChange = { viewModel.networkPassword.value = it },
-                    label = { Text("Password (8 أحرف الأقل)") },
-                    enabled = !isActive,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                if (isActive && netName.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("SSID: $netName", color = MaterialTheme.colorScheme.primary)
+                    Text("Password: $netPass", color = MaterialTheme.colorScheme.primary)
+                }
             }
         }
 
@@ -124,19 +121,20 @@ fun MainScreen(viewModel: MainViewModel) {
             Text(if (isActive) "Stop Broadcast" else "Start Clean Session")
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(16.dp))
         
         Button(
             onClick = { viewModel.generateCleanSessionParams() },
             enabled = !isActive,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Generate Random Session")
+            Text("Generate Clean Session")
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text("Live System Logs:", style = MaterialTheme.typography.titleSmall)
+        // صندوق مراقبة السجلات الحية
+        Text("Live Proxy Logs:", style = MaterialTheme.typography.titleSmall)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -149,7 +147,7 @@ fun MainScreen(viewModel: MainViewModel) {
                     Text(
                         text = log,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (log.contains("خطأ") || log.contains("فشل") || log.contains("❌")) Color.Red else Color.DarkGray,
+                        color = if (log.contains("خطأ") || log.contains("ERROR")) Color.Red else Color.DarkGray,
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
                 }
