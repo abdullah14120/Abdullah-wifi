@@ -14,21 +14,20 @@ import kotlin.random.Random
 
 class MainViewModel : ViewModel() {
     
-    // إعدادات البوابة والمنفذ
     val currentIp = MutableStateFlow("192.168.49.1")
     val currentPort = MutableStateFlow(8080)
 
-    // إعدادات التخفي والـ Anti-DPI
     val selectedDnsProvider = MutableStateFlow("Cloudflare")
     val customDohUrl = MutableStateFlow("")
     val vlessNodeUri = MutableStateFlow("")
     val isSniFragmentationEnabled = MutableStateFlow(false)
+    
+    // 🚀 المتغير الجديد لتغيير هوية الجهاز
+    val spoofedDevice = MutableStateFlow("الافتراضي")
 
-    // حالة الجلسة
     private val _isSessionActive = MutableStateFlow(false)
     val isSessionActive: StateFlow<Boolean> = _isSessionActive
 
-    // بيانات شبكة Wi-Fi Direct
     val networkName = MutableStateFlow("")
     val networkPassword = MutableStateFlow("")
 
@@ -36,20 +35,17 @@ class MainViewModel : ViewModel() {
     private val proxyManager = ProxyServerManager()
     private var keepAliveManager: KeepAliveManager? = null
 
-    // سجلات النظام (Proxy Logs)
     val proxyLogs: StateFlow<List<String>> = proxyManager.serverLogs
 
     init {
-        // تعيين بورت عشوائي مبدئي
         currentPort.value = Random.nextInt(10000, 60000)
     }
 
-    // توليد بيانات جديدة
     fun generateCleanSessionParams() {
         if (_isSessionActive.value) return
         currentIp.value = "192.168.49.1"
         currentPort.value = Random.nextInt(10000, 60000)
-        proxyManager.addLog("♻️ تم تعيين منفذ وكيل (Proxy Port) جديد عشوائياً: ${currentPort.value}")
+        proxyManager.addLog("♻️ تم تعيين منفذ وكيل جديد: ${currentPort.value}")
     }
 
     fun startSession(context: Context) {
@@ -61,7 +57,6 @@ class MainViewModel : ViewModel() {
             proxyManager.addLog("⏳ جاري تهيئة شبكة P2P...")
             delay(500)
             
-            // الاعتماد على التوليد التلقائي المستقر من الكلاس القديم
             wifiDirectManager?.startBroadcast(
                 onSuccess = { name, password ->
                     networkName.value = name
@@ -70,13 +65,13 @@ class MainViewModel : ViewModel() {
                     
                     proxyManager.addLog("✅ تم بث الشبكة بنجاح.")
                     
-                    // تمرير الإعدادات المتقدمة إلى ProxyServerManager وتشغيله
                     proxyManager.startServer(
                         port = currentPort.value,
                         dnsProvider = selectedDnsProvider.value,
                         customDohUrl = customDohUrl.value,
                         enableSniFragmentation = isSniFragmentationEnabled.value,
-                        vlessUri = vlessNodeUri.value // تمهيداً للإصدارات القادمة
+                        vlessUri = vlessNodeUri.value,
+                        spoofedDevice = spoofedDevice.value // 🚀 تمرير الهوية للبروكسي
                     )
                 },
                 onFailure = { error ->
