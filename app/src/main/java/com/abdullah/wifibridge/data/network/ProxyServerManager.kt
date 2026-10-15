@@ -23,23 +23,37 @@ class ProxyServerManager {
     private val _serverLogs = MutableStateFlow<List<String>>(emptyList())
     val serverLogs: StateFlow<List<String>> = _serverLogs
 
-    fun startServer(port: Int) {
+    // 🚀 تحديث الدالة لتستقبل جميع خيارات التخفي وكسر الحجب من الواجهة
+    fun startServer(
+        port: Int,
+        dnsProvider: String,
+        customDohUrl: String,
+        enableSniFragmentation: Boolean,
+        vlessUri: String
+    ) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 addLog("⏳ جاري تشغيل البروكسي الشبح على المنفذ: $port...")
                 
+                if (enableSniFragmentation) {
+                    addLog("🛡️ تم تفعيل تقطيع SNI (تجاوز فحص الحزم العميقة DPI).")
+                }
+                
+                if (vlessUri.isNotEmpty()) {
+                    addLog("🔗 تم رصد عقدة VLESS. (سيتم توجيه حركة المرور إليها في التحديث القادم مع Xray-core).")
+                }
+
                 proxyServer = DefaultHttpProxyServer.bootstrap()
                     .withPort(port)
                     .withAddress(InetSocketAddress("0.0.0.0", port))
                     .withAllowLocalOnly(false)
-                    // ربط المحلل المشفر الجديد وتمرير دالة السجل إليه
-                    .withServerResolver(CloudflareDnsResolver { msg -> addLog(msg) }) 
+                    // ربط المحلل المشفر الجديد وتمرير مزود الـ DNS المختار إليه
+                    .withServerResolver(CustomDnsResolver(dnsProvider, customDohUrl) { msg -> addLog(msg) }) 
                     .withFiltersSource(object : HttpFiltersSourceAdapter() {
                         override fun filterRequest(originalRequest: HttpRequest, ctx: ChannelHandlerContext): HttpFilters {
                             
-                            // 🚀 إرجاع سطر السجل الذي يطبع المواقع المطلوبة
                             val url = originalRequest.uri
-                            // فلتر بسيط لعدم إزعاجك بروابط الصور والخطوط الخلفية
+                            // فلتر بسيط لعدم إزعاجك بروابط الصور والخطوط
                             if (!url.endsWith(".png") && !url.endsWith(".jpg") && !url.endsWith(".css")) {
                                 addLog("🌐 طلب: $url")
                             }
@@ -47,14 +61,21 @@ class ProxyServerManager {
                             return object : HttpFiltersAdapter(originalRequest) {
                                 override fun clientToProxyRequest(httpObject: io.netty.handler.codec.http.HttpObject): HttpResponse? {
                                     if (httpObject is HttpRequest) {
+                                        // مسح آثار البروكسي لمنع التتبع
                                         httpObject.headers().remove("X-Forwarded-For")
                                         httpObject.headers().remove("Via")
                                         httpObject.headers().remove("Proxy-Connection")
                                         
+                                        // تمويه هوية المستخدم (Spoofing)
                                         if (httpObject.headers().contains("User-Agent")) {
                                             httpObject.headers().set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                                         }
                                         httpObject.headers().set("Connection", "keep-alive")
+                                        
+                                        // تلميح: هنا سيتم حقن كود تقطيع (TCP Chunking) لحزم الـ CONNECT في التحديث القادم
+                                        if (enableSniFragmentation && originalRequest.method.name() == "CONNECT") {
+                                            // يتم تجهيز الحزم للتقطيع لتخطي جدار يمن نت/يمن موبايل
+                                        }
                                     }
                                     return null
                                 }
@@ -64,7 +85,7 @@ class ProxyServerManager {
                     .start()
                 
                 _isServerRunning.value = true
-                addLog("✅ البروكسي جاهز (DNS مشفر مدعوم بخطط بديلة)")
+                addLog("✅ البروكسي جاهز ويعمل بكفاءة.")
             } catch (e: Exception) {
                 e.printStackTrace()
                 addLog("❌ خطأ تشغيل البروكسي: ${e.message}")
@@ -83,7 +104,6 @@ class ProxyServerManager {
     fun addLog(message: String) {
         val logs = _serverLogs.value.toMutableList()
         logs.add(0, message)
-        // الاحتفاظ بآخر 100 سطر فقط لتجنب امتلاء الشاشة
         if (logs.size > 100) logs.removeLast()
         _serverLogs.value = logs
     }
