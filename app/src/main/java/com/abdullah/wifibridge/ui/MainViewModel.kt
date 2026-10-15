@@ -61,10 +61,8 @@ class MainViewModel : ViewModel() {
             proxyManager.addLog("⏳ جاري تهيئة شبكة P2P...")
             delay(500)
             
-            // تمرير الاسم وكلمة المرور إذا كتبهما المستخدم
+            // الاعتماد على التوليد التلقائي المستقر من الكلاس القديم
             wifiDirectManager?.startBroadcast(
-                customSsid = networkName.value,
-                customPassword = networkPassword.value,
                 onSuccess = { name, password ->
                     networkName.value = name
                     networkPassword.value = password
