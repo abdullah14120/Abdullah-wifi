@@ -24,14 +24,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 
-// استيراد Shizuku
-import rikka.shizuku.Shizuku
-import com.abdullah.wifibridge.data.shizuku.ShizukuManager
-
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
-    // تعريف مدير Shizuku للفحص الأولي
-    private val shizukuManager = ShizukuManager()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,7 +35,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MainScreen(viewModel, shizukuManager)
+                    MainScreen(viewModel)
                 }
             }
         }
@@ -50,7 +44,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(viewModel: MainViewModel, shizukuManager: ShizukuManager) {
+fun MainScreen(viewModel: MainViewModel) {
     val ip by viewModel.currentIp.collectAsState()
     val port by viewModel.currentPort.collectAsState()
     val isActive by viewModel.isSessionActive.collectAsState()
@@ -58,7 +52,7 @@ fun MainScreen(viewModel: MainViewModel, shizukuManager: ShizukuManager) {
     val netPass by viewModel.networkPassword.collectAsState()
     val logs by viewModel.proxyLogs.collectAsState()
     
-    // 🚀 الإعدادات الجديدة للتخفي والبروكسي
+    // متغيرات التخفي والبروكسي
     val selectedDnsProvider by viewModel.selectedDnsProvider.collectAsState()
     val customDohUrl by viewModel.customDohUrl.collectAsState()
     val vlessNodeUri by viewModel.vlessNodeUri.collectAsState()
@@ -66,17 +60,6 @@ fun MainScreen(viewModel: MainViewModel, shizukuManager: ShizukuManager) {
     
     val context = LocalContext.current
     var expandedDnsMenu by remember { mutableStateOf(false) }
-
-    // التأثير الجانبي الذي يعمل مرة واحدة عند فتح الشاشة
-    LaunchedEffect(Unit) {
-        val status = shizukuManager.checkShizukuStatus()
-        if (status == -1) {
-            // التطبيق ينتظر Shizuku
-        } else if (status == 0) {
-            // إذا كان يعمل ولكن لا يملك صلاحية، نطلبها فور فتح التطبيق
-            shizukuManager.requestPermission(200)
-        }
-    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -97,15 +80,12 @@ fun MainScreen(viewModel: MainViewModel, shizukuManager: ShizukuManager) {
         Text(text = "WiFi Bridge Pro", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(16.dp))
         
-        // ==========================================
         // 1. قسم بيانات الجلسة الحالية
-        // ==========================================
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Session Details:", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.height(8.dp))
                 
-                // في هذا الإصدار (البروكسي)، الآي بي والبورت لا يزالان ثابتين للنظام
                 Text("Gateway IP: $ip")
                 Text("Proxy Port: $port")
                 
@@ -117,15 +97,12 @@ fun MainScreen(viewModel: MainViewModel, shizukuManager: ShizukuManager) {
             }
         }
 
-        // ==========================================
-        // 2. قسم إعدادات التخفي و كسر الحجب (Anti-DPI)
-        // ==========================================
+        // 2. قسم إعدادات التخفي و كسر الحجب
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("إعدادات كسر الحجب والتخفي:", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // اختيار مزود DNS
                 ExposedDropdownMenuBox(
                     expanded = expandedDnsMenu && !isActive,
                     onExpandedChange = { if (!isActive) expandedDnsMenu = !expandedDnsMenu }
@@ -155,7 +132,6 @@ fun MainScreen(viewModel: MainViewModel, shizukuManager: ShizukuManager) {
                     }
                 }
                 
-                // إظهار حقل Custom DoH فقط عند اختياره
                 if (selectedDnsProvider == "Custom DoH") {
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
@@ -170,7 +146,6 @@ fun MainScreen(viewModel: MainViewModel, shizukuManager: ShizukuManager) {
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // حقل عقدة VLESS (Xray-core) - للمستقبل
                 OutlinedTextField(
                     value = vlessNodeUri,
                     onValueChange = { viewModel.vlessNodeUri.value = it },
@@ -182,7 +157,6 @@ fun MainScreen(viewModel: MainViewModel, shizukuManager: ShizukuManager) {
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // مفتاح تفعيل تقطيع الـ SNI
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth(),
@@ -200,9 +174,7 @@ fun MainScreen(viewModel: MainViewModel, shizukuManager: ShizukuManager) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // ==========================================
         // 3. أزرار التحكم
-        // ==========================================
         Button(
             onClick = {
                 if (isActive) {
@@ -236,14 +208,12 @@ fun MainScreen(viewModel: MainViewModel, shizukuManager: ShizukuManager) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // ==========================================
         // 4. السجلات الحية
-        // ==========================================
         Text("Live Proxy Logs:", style = MaterialTheme.typography.titleSmall)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp) // تحديد ارتفاع ثابت حتى لا يملأ الشاشة وتستطيع التمرير للأسفل
+                .height(200.dp)
                 .background(Color.Black.copy(alpha = 0.05f))
                 .padding(8.dp)
         ) {
