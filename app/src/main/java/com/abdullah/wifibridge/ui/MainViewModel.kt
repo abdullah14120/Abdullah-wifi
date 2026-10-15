@@ -13,30 +13,43 @@ import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 class MainViewModel : ViewModel() {
-    private val _currentIp = MutableStateFlow("192.168.49.1")
-    val currentIp: StateFlow<String> = _currentIp
+    
+    // إعدادات البوابة والمنفذ
+    val currentIp = MutableStateFlow("192.168.49.1")
+    val currentPort = MutableStateFlow(8080)
 
-    private val _currentPort = MutableStateFlow(8080)
-    val currentPort: StateFlow<Int> = _currentPort
+    // إعدادات التخفي والـ Anti-DPI
+    val selectedDnsProvider = MutableStateFlow("Cloudflare")
+    val customDohUrl = MutableStateFlow("")
+    val vlessNodeUri = MutableStateFlow("")
+    val isSniFragmentationEnabled = MutableStateFlow(false)
 
+    // حالة الجلسة
     private val _isSessionActive = MutableStateFlow(false)
     val isSessionActive: StateFlow<Boolean> = _isSessionActive
 
-    private val _networkName = MutableStateFlow("")
-    val networkName: StateFlow<String> = _networkName
-    
-    private val _networkPassword = MutableStateFlow("")
-    val networkPassword: StateFlow<String> = _networkPassword
+    // بيانات شبكة Wi-Fi Direct
+    val networkName = MutableStateFlow("")
+    val networkPassword = MutableStateFlow("")
 
     private var wifiDirectManager: WifiDirectManager? = null
     private val proxyManager = ProxyServerManager()
     private var keepAliveManager: KeepAliveManager? = null
 
+    // سجلات النظام (Proxy Logs)
     val proxyLogs: StateFlow<List<String>> = proxyManager.serverLogs
 
+    init {
+        // تعيين بورت عشوائي مبدئي
+        currentPort.value = Random.nextInt(10000, 60000)
+    }
+
+    // توليد بيانات جديدة
     fun generateCleanSessionParams() {
-        _currentIp.value = "192.168.49.1"
-        _currentPort.value = Random.nextInt(10000, 60000)
+        if (_isSessionActive.value) return
+        currentIp.value = "192.168.49.1"
+        currentPort.value = Random.nextInt(10000, 60000)
+        proxyManager.addLog("♻️ تم تعيين منفذ وكيل (Proxy Port) جديد عشوائياً: ${currentPort.value}")
     }
 
     fun startSession(context: Context) {
@@ -45,19 +58,31 @@ class MainViewModel : ViewModel() {
         keepAliveManager?.acquireWakeLock()
         
         viewModelScope.launch {
+            proxyManager.addLog("⏳ جاري تهيئة شبكة P2P...")
             delay(500)
             
+            // تمرير الاسم وكلمة المرور إذا كتبهما المستخدم
             wifiDirectManager?.startBroadcast(
+                customSsid = networkName.value,
+                customPassword = networkPassword.value,
                 onSuccess = { name, password ->
-                    _networkName.value = name
-                    _networkPassword.value = password
+                    networkName.value = name
+                    networkPassword.value = password
                     _isSessionActive.value = true 
                     
-                    // تشغيل البروكسي فوراً بدون أي صلاحيات خارجية
-                    proxyManager.startServer(_currentPort.value)
+                    proxyManager.addLog("✅ تم بث الشبكة بنجاح.")
+                    
+                    // تمرير الإعدادات المتقدمة إلى ProxyServerManager وتشغيله
+                    proxyManager.startServer(
+                        port = currentPort.value,
+                        dnsProvider = selectedDnsProvider.value,
+                        customDohUrl = customDohUrl.value,
+                        enableSniFragmentation = isSniFragmentationEnabled.value,
+                        vlessUri = vlessNodeUri.value // تمهيداً للإصدارات القادمة
+                    )
                 },
                 onFailure = { error ->
-                    println("Error starting network: $error")
+                    proxyManager.addLog("❌ فشل بدء البث: $error")
                     _isSessionActive.value = false
                     keepAliveManager?.releaseWakeLock()
                 }
@@ -71,7 +96,6 @@ class MainViewModel : ViewModel() {
         keepAliveManager?.releaseWakeLock()
         
         _isSessionActive.value = false
-        _networkName.value = ""
-        _networkPassword.value = ""
+        proxyManager.addLog("🛑 تم إيقاف الجلسة والشبكة بنجاح.")
     }
 }
