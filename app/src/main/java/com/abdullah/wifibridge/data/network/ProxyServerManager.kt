@@ -23,37 +23,39 @@ class ProxyServerManager {
     private val _serverLogs = MutableStateFlow<List<String>>(emptyList())
     val serverLogs: StateFlow<List<String>> = _serverLogs
 
-    // 🚀 تحديث الدالة لتستقبل جميع خيارات التخفي وكسر الحجب من الواجهة
     fun startServer(
         port: Int,
         dnsProvider: String,
         customDohUrl: String,
         enableSniFragmentation: Boolean,
-        vlessUri: String
+        vlessUri: String,
+        spoofedDevice: String // 🚀 المعامل الجديد لتغيير هوية الجهاز
     ) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 addLog("⏳ جاري تشغيل البروكسي الشبح على المنفذ: $port...")
                 
-                if (enableSniFragmentation) {
-                    addLog("🛡️ تم تفعيل تقطيع SNI (تجاوز فحص الحزم العميقة DPI).")
+                // 🚀 تحديد بصمة الجهاز بناءً على اختيار المستخدم
+                val targetUserAgent = when (spoofedDevice) {
+                    "iPhone" -> "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1"
+                    "Windows PC" -> "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                    "MacBook" -> "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15"
+                    else -> null // الافتراضي (لا نغير شيئاً)
                 }
-                
-                if (vlessUri.isNotEmpty()) {
-                    addLog("🔗 تم رصد عقدة VLESS. (سيتم توجيه حركة المرور إليها في التحديث القادم مع Xray-core).")
+
+                if (targetUserAgent != null) {
+                    addLog("🎭 تم تفعيل تمويه الهوية. سيظهر الجهاز كـ: $spoofedDevice")
                 }
 
                 proxyServer = DefaultHttpProxyServer.bootstrap()
                     .withPort(port)
                     .withAddress(InetSocketAddress("0.0.0.0", port))
                     .withAllowLocalOnly(false)
-                    // ربط المحلل المشفر الجديد وتمرير مزود الـ DNS المختار إليه
                     .withServerResolver(CustomDnsResolver(dnsProvider, customDohUrl) { msg -> addLog(msg) }) 
                     .withFiltersSource(object : HttpFiltersSourceAdapter() {
                         override fun filterRequest(originalRequest: HttpRequest, ctx: ChannelHandlerContext): HttpFilters {
                             
                             val url = originalRequest.uri
-                            // فلتر بسيط لعدم إزعاجك بروابط الصور والخطوط
                             if (!url.endsWith(".png") && !url.endsWith(".jpg") && !url.endsWith(".css")) {
                                 addLog("🌐 طلب: $url")
                             }
@@ -61,21 +63,17 @@ class ProxyServerManager {
                             return object : HttpFiltersAdapter(originalRequest) {
                                 override fun clientToProxyRequest(httpObject: io.netty.handler.codec.http.HttpObject): HttpResponse? {
                                     if (httpObject is HttpRequest) {
-                                        // مسح آثار البروكسي لمنع التتبع
+                                        // مسح آثار البروكسي
                                         httpObject.headers().remove("X-Forwarded-For")
                                         httpObject.headers().remove("Via")
                                         httpObject.headers().remove("Proxy-Connection")
                                         
-                                        // تمويه هوية المستخدم (Spoofing)
-                                        if (httpObject.headers().contains("User-Agent")) {
-                                            httpObject.headers().set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                                        // 🚀 سحر تغيير هوية الجهاز (Spoofing)
+                                        if (targetUserAgent != null && httpObject.headers().contains("User-Agent")) {
+                                            httpObject.headers().set("User-Agent", targetUserAgent)
                                         }
-                                        httpObject.headers().set("Connection", "keep-alive")
                                         
-                                        // تلميح: هنا سيتم حقن كود تقطيع (TCP Chunking) لحزم الـ CONNECT في التحديث القادم
-                                        if (enableSniFragmentation && originalRequest.method.name() == "CONNECT") {
-                                            // يتم تجهيز الحزم للتقطيع لتخطي جدار يمن نت/يمن موبايل
-                                        }
+                                        httpObject.headers().set("Connection", "keep-alive")
                                     }
                                     return null
                                 }
