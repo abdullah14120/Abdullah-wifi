@@ -52,14 +52,18 @@ fun MainScreen(viewModel: MainViewModel) {
     val netPass by viewModel.networkPassword.collectAsState()
     val logs by viewModel.proxyLogs.collectAsState()
     
-    // متغيرات التخفي والبروكسي
+    // متغيرات التخفي
     val selectedDnsProvider by viewModel.selectedDnsProvider.collectAsState()
     val customDohUrl by viewModel.customDohUrl.collectAsState()
     val vlessNodeUri by viewModel.vlessNodeUri.collectAsState()
     val isSniFragmentationEnabled by viewModel.isSniFragmentationEnabled.collectAsState()
     
+    // 🚀 متغير الهوية الجديدة
+    val spoofedDevice by viewModel.spoofedDevice.collectAsState()
+    
     val context = LocalContext.current
     var expandedDnsMenu by remember { mutableStateOf(false) }
+    var expandedDeviceMenu by remember { mutableStateOf(false) } // حالة قائمة الأجهزة
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -80,7 +84,9 @@ fun MainScreen(viewModel: MainViewModel) {
         Text(text = "WiFi Bridge Pro", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(16.dp))
         
+        // ==========================================
         // 1. قسم بيانات الجلسة الحالية
+        // ==========================================
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Session Details:", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
@@ -97,12 +103,15 @@ fun MainScreen(viewModel: MainViewModel) {
             }
         }
 
+        // ==========================================
         // 2. قسم إعدادات التخفي و كسر الحجب
+        // ==========================================
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("إعدادات كسر الحجب والتخفي:", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // ---------- اختيار مزود DNS ----------
                 ExposedDropdownMenuBox(
                     expanded = expandedDnsMenu && !isActive,
                     onExpandedChange = { if (!isActive) expandedDnsMenu = !expandedDnsMenu }
@@ -146,6 +155,39 @@ fun MainScreen(viewModel: MainViewModel) {
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // 🚀 ---------- اختيار هوية الجهاز (Spoofing) ----------
+                ExposedDropdownMenuBox(
+                    expanded = expandedDeviceMenu && !isActive,
+                    onExpandedChange = { if (!isActive) expandedDeviceMenu = !expandedDeviceMenu }
+                ) {
+                    OutlinedTextField(
+                        value = spoofedDevice,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("هوية الجهاز (User-Agent)") },
+                        trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        enabled = !isActive
+                    )
+                    ExposedDropdownMenu(
+                        expanded = expandedDeviceMenu && !isActive,
+                        onDismissRequest = { expandedDeviceMenu = false }
+                    ) {
+                        listOf("الافتراضي", "iPhone 15 Pro Max", "Samsung S24 Ultra", "Windows 11 PC", "MacBook Pro").forEach { device ->
+                            DropdownMenuItem(
+                                text = { Text(device) },
+                                onClick = {
+                                    viewModel.spoofedDevice.value = device
+                                    expandedDeviceMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // ---------- VLESS ----------
                 OutlinedTextField(
                     value = vlessNodeUri,
                     onValueChange = { viewModel.vlessNodeUri.value = it },
@@ -157,6 +199,7 @@ fun MainScreen(viewModel: MainViewModel) {
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // ---------- تقطيع SNI ----------
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth(),
@@ -174,7 +217,9 @@ fun MainScreen(viewModel: MainViewModel) {
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        // ==========================================
         // 3. أزرار التحكم
+        // ==========================================
         Button(
             onClick = {
                 if (isActive) {
@@ -208,7 +253,9 @@ fun MainScreen(viewModel: MainViewModel) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // ==========================================
         // 4. السجلات الحية
+        // ==========================================
         Text("Live Proxy Logs:", style = MaterialTheme.typography.titleSmall)
         Box(
             modifier = Modifier
