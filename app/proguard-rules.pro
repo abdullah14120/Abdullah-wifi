@@ -35,3 +35,15 @@
 -keep class rikka.shizuku.** { *; }
 -keep class dev.rikka.** { *; }
 -keep class moe.shizuku.** { *; }
+# قواعد حماية Netty و LittleProxy من التقليص
+-keep class io.netty.** { *; }
+-dontwarn io.netty.**
+
+-keep class org.littleshoot.** { *; }
+-dontwarn org.littleshoot.**
+
+-keep class org.slf4j.** { *; }
+-dontwarn org.slf4j.**
+
+-keep class com.google.common.** { *; }
+-dontwarn com.google.common.**
