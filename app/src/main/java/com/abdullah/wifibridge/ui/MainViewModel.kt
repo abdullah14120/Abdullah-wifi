@@ -22,7 +22,9 @@ class MainViewModel : ViewModel() {
     val customDohUrl = MutableStateFlow("")
     val vlessNodeUri = MutableStateFlow("")
     val isSniFragmentationEnabled = MutableStateFlow(false)
-    val spoofedDevice = MutableStateFlow("الافتراضي")
+    
+    // القيمة المبدئية لتوليد بصمة متصفح وجهاز مختلفة تلقائياً في كل جلسة
+    val spoofedDevice = MutableStateFlow("تلقائي (متغير لكل جلسة)")
 
     private val _isSessionActive = MutableStateFlow(false)
     val isSessionActive: StateFlow<Boolean> = _isSessionActive
@@ -104,6 +106,8 @@ class MainViewModel : ViewModel() {
         keepAliveManager?.releaseWakeLock()
 
         _isSessionActive.value = false
-        proxyManager.addLog("🛑 تم إيقاف الجلسة وتفريغ الأنفاق بنجاح.")
+        // تدوير المنفذ تلقائياً استعداداً للجلسة النظيفة القادمة
+        currentPort.value = Random.nextInt(10000, 60000)
+        proxyManager.addLog("🛑 تم إيقاف الجلسة وتفريغ الأنفاق وتجهيز منفذ جديد (${currentPort.value}).")
     }
 }
