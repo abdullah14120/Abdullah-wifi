@@ -24,7 +24,11 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            isShrinkResources = true // تقليص الموارد الزائدة أيضاً
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
     
@@ -33,14 +37,20 @@ android {
         targetCompatibility = JavaVersion.VERSION_1_8
     }
     
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+
     buildFeatures {
         compose = true
     }
-}
-
-kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
+    
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/INDEX.LIST"
+            excludes += "META-INF/io.netty.versions.properties" // منع تعارض ملفات نتي
+        }
     }
 }
 
@@ -50,7 +60,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.activity:activity-compose:1.8.2")
     
-    // Updated BOM for Compose
+    // Compose BOM
     implementation(platform("androidx.compose:compose-bom:2024.02.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -60,16 +70,19 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
-    // Shizuku (For IP/MAC modification without Root)
+    // Shizuku
     val shizukuVersion = "13.1.5"
     implementation("dev.rikka.shizuku:api:$shizukuVersion")
-    // هذه هي المكتبة التي ستسمح لتطبيقك باستقبال إذن Shizuku بنجاح
     implementation("dev.rikka.shizuku:provider:$shizukuVersion")
 
-    // LittleProxy (For robust HTTP proxying & header stripping)
-    implementation("org.littleshoot:littleproxy:1.1.2")
-
+    // LittleProxy
+    implementation("org.littleshoot:littleproxy:1.1.2") {
+        exclude(group = "org.slf4j") // استبعاد لمنع التعارض مع تسجيل السجلات الافتراضي
+    }
     
+    // SLF4J Logger لضمان عمل سجلات LittleProxy بدقة
+    implementation("org.slf4j:slf4j-android:1.7.36")
+
     // لحل تعارضات مكتبة Guava مع LittleProxy
     implementation("com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava")
 }
