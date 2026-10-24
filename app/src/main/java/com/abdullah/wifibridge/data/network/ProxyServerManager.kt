@@ -57,13 +57,23 @@ class ProxyServerManager {
             try {
                 addLog("⏳ جاري تشغيل البروكسي النظيف على المنفذ: $port...")
 
-                val targetUserAgent = when (spoofedDevice) {
-                    "iPhone 15 Pro Max" -> "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1"
-                    "Samsung S24 Ultra" -> "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
-                    "Windows 11 PC" -> "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-                    "MacBook Pro" -> "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15"
-                    else -> null
-                }
+                // توليد هوية جهاز ديناميكية تتغير مع كل تشغيل للجلسة
+val targetUserAgent = when (spoofedDevice) {
+    "تلقائي (متغير لكل جلسة)" -> {
+        val dynamicAgents = listOf(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_${Random.nextInt(1, 6)} like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1",
+            "Mozilla/5.0 (Linux; Android 14; SM-S928B Build/UP1A.${Random.nextInt(230000, 239999)}.001) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/12${Random.nextInt(2, 6)}.0.0.0 Mobile Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/12${Random.nextInt(2, 6)}.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_${Random.nextInt(1, 5)}) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+        )
+        dynamicAgents.random()
+    }
+    "iPhone 15 Pro Max" -> "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1"
+    "Samsung S24 Ultra" -> "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+    "Windows 11 PC" -> "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    "MacBook Pro" -> "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15"
+    else -> null
+}
 
                 val bootstrap = DefaultHttpProxyServer.bootstrap()
                     .withPort(port)
