@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.abdullah.wifibridge.data.network.KeepAliveManager
 import com.abdullah.wifibridge.data.network.ProxyServerManager
 import com.abdullah.wifibridge.data.network.WifiDirectManager
+import com.abdullah.wifibridge.data.network.XrayManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,7 +14,7 @@ import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 class MainViewModel : ViewModel() {
-    
+
     val currentIp = MutableStateFlow("192.168.49.1")
     val currentPort = MutableStateFlow(8080)
 
@@ -21,8 +22,6 @@ class MainViewModel : ViewModel() {
     val customDohUrl = MutableStateFlow("")
     val vlessNodeUri = MutableStateFlow("")
     val isSniFragmentationEnabled = MutableStateFlow(false)
-    
-    // 🚀 المتغير الجديد لتغيير هوية الجهاز
     val spoofedDevice = MutableStateFlow("الافتراضي")
 
     private val _isSessionActive = MutableStateFlow(false)
@@ -33,6 +32,7 @@ class MainViewModel : ViewModel() {
 
     private var wifiDirectManager: WifiDirectManager? = null
     private val proxyManager = ProxyServerManager()
+    private var xrayManager: XrayManager? = null
     private var keepAliveManager: KeepAliveManager? = null
 
     val proxyLogs: StateFlow<List<String>> = proxyManager.serverLogs
@@ -45,34 +45,48 @@ class MainViewModel : ViewModel() {
         if (_isSessionActive.value) return
         currentIp.value = "192.168.49.1"
         currentPort.value = Random.nextInt(10000, 60000)
-        proxyManager.addLog("♻️ تم تعيين منفذ وكيل جديد: ${currentPort.value}")
+        proxyManager.addLog("♻️ تم توليد منفذ جلسة جديد ومعزول: ${currentPort.value}")
     }
 
     fun startSession(context: Context) {
         wifiDirectManager = WifiDirectManager(context)
+        xrayManager = XrayManager(context)
         keepAliveManager = KeepAliveManager(context)
         keepAliveManager?.acquireWakeLock()
-        
+
         viewModelScope.launch {
-            proxyManager.addLog("⏳ جاري تهيئة شبكة P2P...")
+            proxyManager.addLog("⏳ جاري تهيئة شبكة P2P المعزولة...")
             delay(500)
-            
+
             wifiDirectManager?.startBroadcast(
                 onSuccess = { name, password ->
                     networkName.value = name
                     networkPassword.value = password
-                    _isSessionActive.value = true 
-                    
+                    _isSessionActive.value = true
                     proxyManager.addLog("✅ تم بث الشبكة بنجاح.")
-                    
-                    proxyManager.startServer(
-                        port = currentPort.value,
-                        dnsProvider = selectedDnsProvider.value,
-                        customDohUrl = customDohUrl.value,
-                        enableSniFragmentation = isSniFragmentationEnabled.value,
-                        vlessUri = vlessNodeUri.value,
-                        spoofedDevice = spoofedDevice.value // 🚀 تمرير الهوية للبروكسي
-                    )
+
+                    viewModelScope.launch {
+                        // فحص ما إذا كان المستخدم قد أدخل عقدة VLESS
+                        val hasVlessUri = vlessNodeUri.value.trim().startsWith("vless://")
+                        var xrayStarted = false
+
+                        if (hasVlessUri) {
+                            xrayStarted = xrayManager?.startCore(vlessNodeUri.value) { msg ->
+                                proxyManager.addLog(msg)
+                            } ?: false
+                        }
+
+                        // تشغيل البروكسي وتوجيهه إلى Xray إذا نجح تشغيل النواة
+                        proxyManager.startServer(
+                            port = currentPort.value,
+                            dnsProvider = selectedDnsProvider.value,
+                            customDohUrl = customDohUrl.value,
+                            enableSniFragmentation = isSniFragmentationEnabled.value,
+                            useXrayUpstream = xrayStarted,
+                            xrayLocalPort = xrayManager?.localPort ?: 10808,
+                            spoofedDevice = spoofedDevice.value
+                        )
+                    }
                 },
                 onFailure = { error ->
                     proxyManager.addLog("❌ فشل بدء البث: $error")
@@ -86,9 +100,10 @@ class MainViewModel : ViewModel() {
     fun stopSession(context: Context) {
         wifiDirectManager?.stopBroadcast()
         proxyManager.stopServer()
+        xrayManager?.stopCore { msg -> proxyManager.addLog(msg) }
         keepAliveManager?.releaseWakeLock()
-        
+
         _isSessionActive.value = false
-        proxyManager.addLog("🛑 تم إيقاف الجلسة والشبكة بنجاح.")
+        proxyManager.addLog("🛑 تم إيقاف الجلسة وتفريغ الأنفاق بنجاح.")
     }
 }
