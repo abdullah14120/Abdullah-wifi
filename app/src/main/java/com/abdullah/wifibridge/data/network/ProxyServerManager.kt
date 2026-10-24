@@ -2,6 +2,7 @@ package com.abdullah.wifibridge.data.network
 
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.http.DefaultFullHttpResponse
+import io.netty.handler.codec.http.HttpMethod
 import io.netty.handler.codec.http.HttpObject
 import io.netty.handler.codec.http.HttpRequest
 import io.netty.handler.codec.http.HttpResponse
@@ -136,7 +137,7 @@ class ProxyServerManager {
                                     }
 
                                     // 3. تعديل User-Agent للطلبات غير المشفرة فقط (مع ترك نفق CONNECT صامتاً)
-                                    if (targetUserAgent != null && httpObject.method().name() != "CONNECT") {
+                                    if (targetUserAgent != null && httpObject.method != HttpMethod.CONNECT) {
                                         if (httpObject.headers().contains("User-Agent")) {
                                             httpObject.headers().set("User-Agent", targetUserAgent)
                                         }
