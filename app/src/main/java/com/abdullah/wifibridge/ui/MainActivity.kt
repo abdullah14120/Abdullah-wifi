@@ -4,9 +4,9 @@ import android.Manifest
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -14,15 +14,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.Color
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
@@ -51,19 +51,19 @@ fun MainScreen(viewModel: MainViewModel) {
     val netName by viewModel.networkName.collectAsState()
     val netPass by viewModel.networkPassword.collectAsState()
     val logs by viewModel.proxyLogs.collectAsState()
-    
+
     // متغيرات التخفي
     val selectedDnsProvider by viewModel.selectedDnsProvider.collectAsState()
     val customDohUrl by viewModel.customDohUrl.collectAsState()
     val vlessNodeUri by viewModel.vlessNodeUri.collectAsState()
     val isSniFragmentationEnabled by viewModel.isSniFragmentationEnabled.collectAsState()
-    
-    // 🚀 متغير الهوية الجديدة
+
+    // متغير الهوية المتغيرة لكل جلسة
     val spoofedDevice by viewModel.spoofedDevice.collectAsState()
-    
+
     val context = LocalContext.current
     var expandedDnsMenu by remember { mutableStateOf(false) }
-    var expandedDeviceMenu by remember { mutableStateOf(false) } // حالة قائمة الأجهزة
+    var expandedDeviceMenu by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -83,18 +83,22 @@ fun MainScreen(viewModel: MainViewModel) {
     ) {
         Text(text = "WiFi Bridge Pro", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         // ==========================================
         // 1. قسم بيانات الجلسة الحالية
         // ==========================================
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Session Details:", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    "Session Details:",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 Text("Gateway IP: $ip")
                 Text("Proxy Port: $port")
-                
+
                 if (isActive && netName.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Text("SSID: $netName", color = MaterialTheme.colorScheme.primary)
@@ -108,7 +112,11 @@ fun MainScreen(viewModel: MainViewModel) {
         // ==========================================
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("إعدادات كسر الحجب والتخفي:", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
+                Text(
+                    "إعدادات كسر الحجب والتخفي:",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // ---------- اختيار مزود DNS ----------
@@ -140,7 +148,7 @@ fun MainScreen(viewModel: MainViewModel) {
                         }
                     }
                 }
-                
+
                 if (selectedDnsProvider == "Custom DoH") {
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
@@ -155,7 +163,7 @@ fun MainScreen(viewModel: MainViewModel) {
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // 🚀 ---------- اختيار هوية الجهاز (Spoofing) ----------
+                // ---------- اختيار هوية الجهاز (Spoofing) ----------
                 ExposedDropdownMenuBox(
                     expanded = expandedDeviceMenu && !isActive,
                     onExpandedChange = { if (!isActive) expandedDeviceMenu = !expandedDeviceMenu }
@@ -173,7 +181,14 @@ fun MainScreen(viewModel: MainViewModel) {
                         expanded = expandedDeviceMenu && !isActive,
                         onDismissRequest = { expandedDeviceMenu = false }
                     ) {
-                        listOf("الافتراضي", "iPhone 15 Pro Max", "Samsung S24 Ultra", "Windows 11 PC", "MacBook Pro").forEach { device ->
+                        listOf(
+                            "تلقائي (متغير لكل جلسة)",
+                            "الافتراضي",
+                            "iPhone 15 Pro Max",
+                            "Samsung S24 Ultra",
+                            "Windows 11 PC",
+                            "MacBook Pro"
+                        ).forEach { device ->
                             DropdownMenuItem(
                                 text = { Text(device) },
                                 onClick = {
@@ -226,7 +241,10 @@ fun MainScreen(viewModel: MainViewModel) {
                     viewModel.stopSession(context)
                 } else {
                     val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.NEARBY_WIFI_DEVICES)
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.NEARBY_WIFI_DEVICES
+                        )
                     } else {
                         arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
                     }
@@ -242,7 +260,7 @@ fun MainScreen(viewModel: MainViewModel) {
         }
 
         Spacer(modifier = Modifier.height(8.dp))
-        
+
         Button(
             onClick = { viewModel.generateCleanSessionParams() },
             enabled = !isActive,
